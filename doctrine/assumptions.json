@@ -1,0 +1,30 @@
+{
+  "program": "relief",
+  "version": "0.1",
+  "assumptions": [
+    {
+      "id": "RL-ASM-1",
+      "assumption": "An IFRC appeal shows where the Red Cross and Red Crescent asked for money, not every place in need. Crises led by the ICRC (most armed conflicts), the UN or a government may have no IFRC appeal, so a country with no appeal is not a country without need.",
+      "status": "holds",
+      "test": "Stated on the page and in the feed note. Checked when the HDX HAPI lane (needs and funding by the UN system) is added: list countries with a UN appeal and no IFRC appeal."
+    },
+    {
+      "id": "RL-ASM-2",
+      "assumption": "IFRC GO's amounts and status are current. Many appeals stay marked Active long after their end date (205 of 366 on 16 Nov 2026; the oldest started in 2012).",
+      "status": "strained",
+      "test": "Every appeal carries past_end_date. The feed, totals and funding chart leave those out; the page counts and lists them. Review the count after each collect."
+    },
+    {
+      "id": "RL-ASM-3",
+      "assumption": "WHO publishes a Disease Outbreak News notice after it has verified an event, often weeks after the member state's notification, so a notice dates WHO's publication, not the outbreak.",
+      "status": "holds",
+      "test": "Untestable from the API alone; the notice text states the notification date, which this program does not keep (WHO's terms)."
+    },
+    {
+      "id": "RL-ASM-4",
+      "assumption": "WHO's notice titles keep the form '<disease> - <place>' (or a comma) closely enough to read the place, and relief/places.py knows WHO's country names.",
+      "status": "holds",
+      "test": "Every collect counts notices whose stated place was not recognised (extra.who.unread_places) and gives each such item coverage_fraction 0. On 16 Nov 2026 all 42 published notices parsed, and every one of the 200 read whose title states a place."
+    }
+  ]
+}

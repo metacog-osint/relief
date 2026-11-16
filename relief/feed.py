@@ -1,0 +1,233 @@
+"""Build Relief's contract-v2 feed (tic-feed/2, GeoJSON) from the collected records.
+
+One item per IFRC appeal and per WHO outbreak notice: kind "observation", tier "routine", status_class
+"reported". Each is the publisher's own report (source grade A2). No probability is stated. How unusual a
+country's appeal count is for that country is measured and published (`place_context`), but no tier rule is set
+on it yet: that threshold is Tom's call (indicator RL-IND-1, proposed).
+"""
+from __future__ import annotations
+
+import hashlib
+import sys
+from datetime import date
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "doctrine" / "kit" / "python"))
+from tic_doctrine import CONTRACT, geo  # noqa: E402
+
+from . import places  # noqa: E402
+
+PROGRAM = "relief"
+NAME = "Relief"  # Tom, 15 Nov 2026
+SITE = "https://relief.theintelligence.company"  # planned address; no DNS or Pages project yet
+METHOD = "relief-0.1"
+LANGUAGE_KEY = "https://github.com/metacog-osint/tic-doctrine/blob/main/docs/language-key.md"
+
+SOURCES = {
+    "ifrc": {"id": "ifrc-go-appeals", "publisher": "International Federation of Red Cross and Red Crescent "
+                                                   "Societies (IFRC), GO platform",
+             "licence": "IFRC GO terms: non-commercial use with credit; analyses allowed; the data bank is not "
+                        "copied or redistributed in bulk",
+             "independence_group": "ifrc", "source_type": "humanitarian organisation (own appeals)",
+             "descriptor": "IFRC's own record of an Emergency Appeal or DREF allocation it launched: hazard, "
+                           "country, amounts requested and funded in CHF, people targeted, dates."},
+    "who": {"id": "who-don", "publisher": "World Health Organization (WHO), Disease Outbreak News",
+            "licence": "WHO website terms: extracts for research with acknowledgement of WHO, not for commercial "
+                       "use; title, date and link only, no notice text republished",
+            "independence_group": "who", "source_type": "official notice (UN agency)",
+            "descriptor": "WHO's Disease Outbreak News notice of an acute public health event, usually after a "
+                          "member state's notification under the International Health Regulations."},
+}
+REQUIREMENT = {"ifrc": ["RL-PIR-1", "RL-PIR-2", "RL-EEI-1"], "who": ["RL-PIR-3"]}
+
+
+def item_id(key: str) -> str:
+    lane = key.split(":", 1)[0]
+    return f"RL-{lane.upper()}-{hashlib.sha256(key.encode('utf-8')).hexdigest()[:10]}"
+
+
+def _geometry(ccs: list[str]):
+    pts = []
+    for cc in ccs:
+        p = places.point(cc)
+        if p:
+            pts.append([p[1], p[0]])
+    if not pts:
+        return None
+    return {"type": "Point", "coordinates": pts[0]} if len(pts) == 1 else {"type": "MultiPoint", "coordinates": pts}
+
+
+def _name(cc: str) -> str:
+    return geo.name(cc) or {"RE": "Réunion", "YT": "Mayotte", "GP": "Guadeloupe", "MQ": "Martinique",
+                            "GF": "French Guiana"}.get(cc, cc)
+
+
+def _day_text(d: str | None) -> str:
+    if not d:
+        return "an unstated date"
+    x = date.fromisoformat(d)
+    return f"{x.day} {x.strftime('%b %Y')}"
+
+
+def _utc(ts: str | None) -> str | None:
+    """'2026-11-10 17:24:01+00:00' or '...Z' -> '2026-11-10T17:24:01Z' (seconds kept, fractions dropped)."""
+    if not ts:
+        return None
+    s = ts.replace(" ", "T")
+    s = s.split("+")[0].rstrip("Z").split(".")[0]
+    return s + "Z" if len(s) >= 19 else None
+
+
+def _chf(x: float) -> str:
+    return f"CHF {x:,.0f}"
+
+
+def ifrc_summary(r: dict) -> str:
+    kind = {"DREF": "a DREF allocation", "Emergency Appeal": "an Emergency Appeal"}.get(r["appeal_type"],
+                                                                                       f"an appeal ({r['appeal_type']})")
+    bits = [f"IFRC launched {kind} for {_name(r['country'])}"
+            + (f" ({r['hazard']})" if r.get("hazard") else "") + f" on {_day_text(r['start_date'])}."]
+    money = f"{_chf(r['amount_requested_chf'])} requested"
+    if r.get("funded_share") is not None:
+        money += f", {_chf(r['amount_funded_chf'])} funded ({r['funded_share']:.0%})"
+    if r.get("people_targeted"):
+        money += f", {r['people_targeted']:,} people targeted"
+    bits.append(money[0].upper() + money[1:] + ".")
+    if r["status"] == "Active":
+        bits.append(f"Active; IFRC lists the end date as {_day_text(r['end_date'])}"
+                    + (", which has passed" if r.get("past_end_date") else "") + ".")
+    else:
+        bits.append(f"Status: {r['status']}.")
+    pc = r.get("place_context")
+    if pc:
+        bits.append(f"{_name(r['country'])} has had {pc['appeals_last_90_days']} IFRC appeal"
+                    f"{'' if pc['appeals_last_90_days'] == 1 else 's'} start in the last 90 days, against an average "
+                    f"of {pc['mean_per_90_days']:.2f} per 90 days over {pc['baseline_window']}.")
+    return " ".join(bits)
+
+
+def who_summary(r: dict) -> str:
+    where = ", ".join([_name(c) for c in r["countries"]] + r["regions"]) or r.get("place") or "no place stated"
+    bits = [f"WHO published a Disease Outbreak News notice on {_day_text(r['published_day'])}: {r['disease']}, "
+            f"{where}."]
+    prior = r.get("prior_notices_730_days")
+    if prior:
+        for cc, n in prior.items():
+            bits.append(f"First WHO notice naming {_name(cc)} in two years." if n == 0 else
+                        f"WHO's {n + 1}{_ordinal(n + 1)} notice naming {_name(cc)} in two years.")
+    bits.append("WHO publishes a notice after it has verified the event, often weeks after the first report.")
+    return " ".join(bits)
+
+
+def _ordinal(n: int) -> str:
+    return "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+
+
+def feature(r: dict, generated: str) -> dict:
+    lane = r["lane"]
+    src = dict(SOURCES[lane])
+    src.update({"url": r["url"], "grade": "A2", "accessed_at": generated})
+    iid = item_id(r["key"])
+    common = {
+        "contract": CONTRACT, "id": iid, "program": PROGRAM, "kind": "observation", "tier": "routine",
+        "status": "actual", "msg_type": "new", "human_review": "none", "us_person_data": "none",
+        "status_class": "reported", "product_category": "current", "published_at": generated,
+        "pmesii_pt": ["social"], "ie_aspect": ["physical", "human"], "ascope": ["people", "events"],
+        "requirement_ids": REQUIREMENT[lane], "method_version": METHOD,
+        "visual": {"type": "page", "url": f"{SITE}/#{iid}"},
+    }
+    if lane == "ifrc":
+        src["title"] = f"{r['appeal_type']} {r['code']}: {r['name']}"
+        props = {**common,
+                 "title": f"{r['appeal_type']}: {r['name']}",
+                 "summary": ifrc_summary(r),
+                 "data_as_of": _utc(r.get("updated_at")) or f"{r['start_date']}T00:00:00Z",
+                 "countries": [r["country"]],
+                 "precision_class": "country",
+                 "coverage_fraction": 1.0,
+                 "sources": [src],
+                 "appeal": {k: r.get(k) for k in (
+                     "appeal_id", "code", "appeal_type", "hazard", "status", "start_date", "end_date",
+                     "past_end_date", "amount_requested_chf", "amount_funded_chf", "funded_share", "people_targeted",
+                     "emergency_id", "emergency_name", "ifrc_severity", "region")},
+                 "place_context": r.get("place_context")}
+        if not _utc(r.get("updated_at")):
+            props["data_as_of_precision"] = "day"
+        geom = _geometry([r["country"]])
+    else:
+        src["title"] = r["title"]
+        src["published_at"] = f"{r['published_day']}T00:00:00Z"
+        props = {**common,
+                 "title": f"WHO outbreak notice: {r['title']}",
+                 "summary": who_summary(r),
+                 "data_as_of": f"{r['published_day']}T00:00:00Z",
+                 "data_as_of_precision": "day",
+                 "countries": r["countries"],
+                 "precision_class": "country" if r["countries"] else "none",
+                 "coverage_fraction": 1.0 if r["place_parsed"] else 0.0,
+                 "sources": [src],
+                 "notice": {k: r.get(k) for k in ("don_id", "disease", "place", "regions", "place_unread",
+                                                  "prior_notices_730_days")}}
+        geom = _geometry(r["countries"])
+    return {"type": "Feature", "geometry": geom, "properties": props}
+
+
+def health(lanes: dict, records: list[dict]) -> dict:
+    """Per-source health, keyed by the source id the items carry (the key the kit's history log and COP read),
+    in Cordon's, Headwind's and Undertow's shape. State is "up" when the lane was read on its last run and
+    "failing" when not; its last good items stay in the feed."""
+    newest: dict[str, str] = {}
+    for r in records:
+        d = r.get("start_date") if r["lane"] == "ifrc" else r.get("published_day")
+        if d and d > newest.get(r["lane"], ""):
+            newest[r["lane"]] = d
+    out = {}
+    for lane, src in SOURCES.items():
+        st = lanes.get(lane) or {}
+        ok, failed = st.get("status") == "ok", st.get("status") == "failed"
+        n = st.get("items") or 0
+        if ok:
+            detail = f"{n} items" + (" (last good copy, not read on this run)" if st.get("from_previous") else "")
+        elif failed:
+            detail = (f"not read; {n} items from the last good copy" if st.get("from_previous")
+                      else "not read; no earlier copy, so no items")
+        else:
+            detail = "not run yet"
+        out[src["id"]] = {
+            "state": "up" if ok else "failing",
+            "last_ok": st.get("fetched_at"),
+            "last_error": st.get("error") if failed else None,
+            "failures": int(st.get("failures") or 0) if (ok or failed) else 0,
+            "checked_at": st.get("failed_at") if failed else st.get("fetched_at"),
+            "detail": detail,
+            "lane": lane,
+            "data_as_of": f"{newest[lane]}T00:00:00Z" if lane in newest else None,
+        }
+    return out
+
+
+def build_feed(records: list[dict], generated: str, health_record: dict | None = None) -> dict:
+    feats = [feature(r, generated) for r in records]
+    feats.sort(key=lambda f: (f["properties"]["data_as_of"], f["properties"]["id"]), reverse=True)
+    doc = {
+        "type": "FeatureCollection",
+        "contract": CONTRACT,
+        "program": PROGRAM,
+        "generated_at": generated,
+        "method_version": METHOD,
+        "licence": ("Relief's own text: CC BY 4.0 (The Intelligence Company). Each item keeps its source's "
+                    "terms: IFRC GO, non-commercial use with credit, no bulk redistribution; WHO, extracts for "
+                    "research with acknowledgement, title, date and link only."),
+        "attribution": ("Relief, The Intelligence Company. Sources: IFRC GO "
+                        "(International Federation of Red Cross and Red Crescent Societies); WHO Disease Outbreak "
+                        "News (World Health Organization)."),
+        "language_key": LANGUAGE_KEY,
+        "note": ("Measurements and publishers' reports only: no probability, no warning. IFRC appeals show where the "
+                 "Red Cross and Red Crescent asked for money, not every place in need: crises led by the ICRC, the "
+                 "UN or governments may have no IFRC appeal."),
+    }
+    if health_record is not None:
+        doc["health"] = health_record
+    doc["features"] = feats
+    return doc
