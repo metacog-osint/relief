@@ -1,6 +1,6 @@
 {
   "kit": "tic-doctrine",
-  "version": "0.5.7",
+  "version": "0.5.9",
   "files": {
     "tic.py": "ccfaea62931c88063d8bc32d6f3600ab86c7094b58956a7b43b8832a7870b7f5",
     "vocab/actors.json": "edfb7317b5313e9a3f329c7dc2a39ec20cc631e459cf588f3218fa21fd3e80ea",
@@ -11,11 +11,11 @@
     "vocab/icd203.json": "9f85ffe9632e8f413e8c937af15d870c6882a4b87b94604296e80e3d2f063af7",
     "vocab/infrastructure.json": "da63be252f65e21e5041f33e97913f3fd93935d44a9610f13256c35b123fd193",
     "vocab/likelihood.json": "4d47a87701a20adbee0ee910eae6581f74ac46f9bd6bf3f26671660b2cabfd9b",
-    "vocab/programs.json": "50d3bf3d2c57df91283d110162165342af6dc6b5016ae5eb0b654cf389550084",
+    "vocab/programs.json": "7479330030cc6b0870ec0b9fb87e94046091137a08f1cd0cf69bc481bc6edfdf",
     "geo/countries.json": "0d1f348855871ac26c98f64d01c0fc342f8b917cb16ece80fb7d9e3add236396",
     "geo/points.json": "369b66ee628c6753d43b114770875cb27a2008da200b58bf76932a50b3cff994",
     "geo/subdivisions.json": "f2bf0186fdbf45563427e2163190f13c85476377e891c09c55d9f56864dc1ecf",
-    "python/tic_doctrine/__init__.py": "7684804caf35bc0159f1eecc930dec8171ccbd9f89f71e39c2555f8f6dd7b9a3",
+    "python/tic_doctrine/__init__.py": "61efdc161672a9eb4992546290860f217c11454f2b625e7df6b063d33c57168f",
     "python/tic_doctrine/confidence.py": "a15beea576a41944bcd996cf5124005fbecba0b6f38a549e9f8121467e0c9bd8",
     "python/tic_doctrine/contract.py": "fb8dfe68589320c51c7a11e1a172b992461790d7d9118a6ee452e47422e599d5",
     "python/tic_doctrine/geo.py": "04dcf0535d60e68c59b5327f6fb8573527754aaa931d759ce0bb1581ad5c10d5",
@@ -35,6 +35,6 @@
     "docs/language-key.md": "8dafebd7a7bfc0013fc5025fb071e1317afa0ebdeff4385a1d88d83cbf7979ac",
     "docs/sources-and-withholding.md": "a496c66b68700450facf9d65008b35d5b5a3e72f495b8c9fa886c325fdb767cf",
     "LICENSE": "e2fcdaa349fa37ea67fca3787f04878a0579a8fcdcc7f5db615fe15d3f5cf6d7",
-    "README.md": "dafac86e42f710eedfe5983ff8ab131252920ceb6d66ea3d224570aa9ca9f08f"
+    "README.md": "9ac66bf12dc32aeaafd6186e5e86bac06d6a3f5ee3c619999a0415c4df69262f"
   }
 }
