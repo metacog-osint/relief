@@ -98,6 +98,30 @@ class Baseline(unittest.TestCase):
         self.assertEqual(ctx["appeals_in_baseline"], 1)
 
 
+class Thresholds(unittest.TestCase):
+    GEN = "2026-11-16T12:00:00Z"   # window starts 2026-08-18
+
+    def pc(self, n, p):
+        return {"appeals_last_90_days": n, "tail_probability": p, "mean_per_90_days": 0.3,
+                "baseline_window": "2016-11-16 to 2026-08-17", "appeals_in_baseline": 12}
+
+    def test_ind1(self):
+        r = {"country": "XX", "start_date": "2026-10-01", "place_context": self.pc(2, 0.005)}
+        self.assertEqual(feed.rule("ifrc", r, self.GEN)["indicator"], "RL-IND-1")
+        self.assertIsNone(feed.rule("ifrc", {**r, "place_context": self.pc(1, 0.0001)}, self.GEN))  # one appeal
+        self.assertIsNone(feed.rule("ifrc", {**r, "place_context": self.pc(3, 0.01)}, self.GEN))    # not below 1%
+        self.assertIsNone(feed.rule("ifrc", {**r, "start_date": "2026-08-17"}, self.GEN))           # before window
+        self.assertIsNotNone(feed.rule("ifrc", {**r, "start_date": "2026-08-18"}, self.GEN))
+        self.assertIsNone(feed.rule("ifrc", {**r, "place_context": None}, self.GEN))
+
+    def test_ind2(self):
+        self.assertEqual(feed.rule("who", {"prior_notices_730_days": {"XX": 0, "YY": 3}}, self.GEN)["countries"],
+                         ["XX"])
+        self.assertIsNone(feed.rule("who", {"prior_notices_730_days": {"XX": 1}}, self.GEN))
+        self.assertIsNone(feed.rule("who", {"prior_notices_730_days": None}, self.GEN))  # read too short
+        self.assertIsNone(feed.rule("who", {"prior_notices_730_days": {}}, self.GEN))
+
+
 class Pipeline(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -123,6 +147,33 @@ class Pipeline(unittest.TestCase):
             errs = [m for _, sev, m in contract.check(f, regs) if sev == "error"]
             self.assertEqual(errs, [], f["properties"]["id"])
         self.assertEqual(set(doc["health"]), {"ifrc-go-appeals", "who-don"})
+
+    def test_anomaly_items_pass_contract_and_check(self):
+        snap = self.run_once()
+        gen = snap["generated_at"]
+        ifrc_recent = [r for r in snap["records"]["ifrc"] if r["start_date"] >= feed.recent_from(gen)
+                       and not r.get("past_end_date") and r.get("place_context")]
+        self.assertTrue(ifrc_recent, "fixtures need an appeal in the 90-day window")
+        target = ifrc_recent[0]
+        target["place_context"] = {**target["place_context"], "appeals_last_90_days": 3, "tail_probability": 0.002}
+        who = [r for r in snap["records"]["who"] if r.get("prior_notices_730_days")]
+        if who:
+            who[0]["prior_notices_730_days"] = {cc: 0 for cc in who[0]["prior_notices_730_days"]}
+        cli.build_site(self.tmp, snapshot=snap)
+        self.assertEqual(cli.check_all(self.tmp), [])
+        doc = json.loads((self.tmp / "site" / "data" / "feed.geojson").read_text(encoding="utf-8"))
+        regs = registers.ids(self.tmp / "doctrine")
+        anomalies = [f for f in doc["features"] if f["properties"]["tier"] == "anomaly"]
+        self.assertTrue(any(f["properties"]["id"] == feed.item_id(target["key"]) for f in anomalies))
+        for f in anomalies:
+            self.assertIn("baseline_ref", f["properties"])
+            self.assertIn("nusual", f["properties"]["summary"])
+            self.assertEqual([m for _, sev, m in contract.check(f, regs) if sev == "error"], [])
+        # check fails a tier that disagrees with the thresholds.
+        doc["features"][-1]["properties"]["tier"] = (
+            "routine" if doc["features"][-1]["properties"]["tier"] == "anomaly" else "anomaly")
+        (self.tmp / "site" / "data" / "feed.geojson").write_text(json.dumps(doc), encoding="utf-8")
+        self.assertTrue(any("does not match" in e for e in cli.check_all(self.tmp)))
 
     def test_no_who_body_text_published(self):
         self.run_once()

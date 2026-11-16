@@ -1,15 +1,20 @@
 """Build Relief's contract-v2 feed (tic-feed/2, GeoJSON) from the collected records.
 
-One item per IFRC appeal and per WHO outbreak notice: kind "observation", tier "routine", status_class
-"reported". Each is the publisher's own report (source grade A2). No probability is stated. How unusual a
-country's appeal count is for that country is measured and published (`place_context`), but no tier rule is set
-on it yet: that threshold is Tom's call (indicator RL-IND-1, proposed).
+One item per IFRC appeal and per WHO outbreak notice: kind "observation", status_class "reported". Each is the
+publisher's own report (source grade A2). No probability is stated. Tier is "routine" unless an indicator's
+threshold is met (Tom, 16 Nov 2026), then "anomaly", a measurement against the place's own past, never a warning:
+
+- RL-IND-1: an appeal that started in the last 90 days, in a country with at least 2 appeals in those 90 days and
+  a Poisson tail probability below 0.01 at that country's rate over the ten years before (`place_context`).
+- RL-IND-2: a WHO notice naming a country WHO had not named in the 730 days before (`prior_notices_730_days`).
+
+`rule()` is the one statement of both; the build and `check` both call it.
 """
 from __future__ import annotations
 
 import hashlib
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,7 +26,7 @@ from . import places  # noqa: E402
 PROGRAM = "relief"
 NAME = "Relief"  # Tom, 15 Nov 2026
 SITE = "https://relief.theintelligence.company"  # planned address; no DNS or Pages project yet
-METHOD = "relief-0.1"
+METHOD = "relief-0.2"  # 0.2: RL-IND-1 and RL-IND-2 thresholds set (Tom, 16 Nov 2026)
 LANGUAGE_KEY = "https://github.com/metacog-osint/tic-doctrine/blob/main/docs/language-key.md"
 
 SOURCES = {
@@ -40,6 +45,49 @@ SOURCES = {
                           "member state's notification under the International Health Regulations."},
 }
 REQUIREMENT = {"ifrc": ["RL-PIR-1", "RL-PIR-2", "RL-EEI-1"], "who": ["RL-PIR-3"]}
+
+
+# Thresholds, Tom 16 Nov 2026 ("Adopt both thresholds").
+IND1_P = 0.01        # RL-IND-1: tail probability strictly below this
+IND1_MIN = 2         # RL-IND-1: at least this many appeals in the window
+RECENT_DAYS = 90     # the window place_context counts (ifrc.RECENT_DAYS)
+
+
+def recent_from(generated: str) -> str:
+    """First day of the 90-day window for a collection at `generated` (ISO UTC)."""
+    return (date.fromisoformat(generated[:10]) - timedelta(days=RECENT_DAYS)).isoformat()
+
+
+def ind1(pc: dict | None, start_date: str | None, window_start: str) -> bool:
+    return bool(pc and start_date and start_date >= window_start
+                and pc.get("appeals_last_90_days", 0) >= IND1_MIN
+                and pc.get("tail_probability") is not None and pc["tail_probability"] < IND1_P)
+
+
+def ind2(prior: dict | None) -> list[str]:
+    """Countries in the notice that WHO had not named in the 730 days before (empty if the read is too short)."""
+    return sorted(cc for cc, n in (prior or {}).items() if n == 0)
+
+
+def rule(lane: str, r: dict, generated: str) -> dict | None:
+    """The anomaly a record meets, or None. `r` is a collected record (or an item's equivalent fields)."""
+    if lane == "ifrc":
+        pc = r.get("place_context")
+        if not ind1(pc, r.get("start_date"), recent_from(generated)):
+            return None
+        return {"indicator": "RL-IND-1",
+                "baseline_ref": {"id": f"relief-ifrc-appeals-{r['country']}", "type": "rolling", "version": METHOD,
+                                 "window": f"{pc['baseline_window']}: the ten years before the last 90 days"}}
+    first = ind2(r.get("prior_notices_730_days"))
+    if not first:
+        return None
+    return {"indicator": "RL-IND-2", "countries": first,
+            "baseline_ref": {"id": "relief-who-don-" + "-".join(first), "type": "rolling", "version": METHOD,
+                             "window": "the 730 days before the notice"}}
+
+
+def _pct(p: float) -> str:
+    return "under 0.1%" if p < 0.001 else f"{p * 100:.1f}%"
 
 
 def item_id(key: str) -> str:
@@ -83,7 +131,7 @@ def _chf(x: float) -> str:
     return f"CHF {x:,.0f}"
 
 
-def ifrc_summary(r: dict) -> str:
+def ifrc_summary(r: dict, generated: str | None = None) -> str:
     kind = {"DREF": "a DREF allocation", "Emergency Appeal": "an Emergency Appeal"}.get(r["appeal_type"],
                                                                                        f"an appeal ({r['appeal_type']})")
     bits = [f"IFRC launched {kind} for {_name(r['country'])}"
@@ -104,6 +152,10 @@ def ifrc_summary(r: dict) -> str:
         bits.append(f"{_name(r['country'])} has had {pc['appeals_last_90_days']} IFRC appeal"
                     f"{'' if pc['appeals_last_90_days'] == 1 else 's'} start in the last 90 days, against an average "
                     f"of {pc['mean_per_90_days']:.2f} per 90 days over {pc['baseline_window']}.")
+        if generated and rule("ifrc", r, generated):
+            bits.append(f"Unusual for {_name(r['country'])} (RL-IND-1): at that average, the chance of "
+                        f"{pc['appeals_last_90_days']} or more in 90 days is {_pct(pc['tail_probability'])}, below "
+                        f"the 1% threshold.")
     return " ".join(bits)
 
 
@@ -116,6 +168,8 @@ def who_summary(r: dict) -> str:
         for cc, n in prior.items():
             bits.append(f"First WHO notice naming {_name(cc)} in two years." if n == 0 else
                         f"WHO's {n + 1}{_ordinal(n + 1)} notice naming {_name(cc)} in two years.")
+    if ind2(prior):
+        bits.append(f"Relief marks this unusual for {', '.join(_name(c) for c in ind2(prior))} (RL-IND-2).")
     bits.append("WHO publishes a notice after it has verified the event, often weeks after the first report.")
     return " ".join(bits)
 
@@ -129,19 +183,23 @@ def feature(r: dict, generated: str) -> dict:
     src = dict(SOURCES[lane])
     src.update({"url": r["url"], "grade": "A2", "accessed_at": generated})
     iid = item_id(r["key"])
+    hit = rule(lane, r, generated)
     common = {
-        "contract": CONTRACT, "id": iid, "program": PROGRAM, "kind": "observation", "tier": "routine",
+        "contract": CONTRACT, "id": iid, "program": PROGRAM, "kind": "observation",
+        "tier": "anomaly" if hit else "routine",
         "status": "actual", "msg_type": "new", "human_review": "none", "us_person_data": "none",
         "status_class": "reported", "product_category": "current", "published_at": generated,
         "pmesii_pt": ["social"], "ie_aspect": ["physical", "human"], "ascope": ["people", "events"],
         "requirement_ids": REQUIREMENT[lane], "method_version": METHOD,
         "visual": {"type": "page", "url": f"{SITE}/#{iid}"},
     }
+    if hit:
+        common["baseline_ref"] = hit["baseline_ref"]
     if lane == "ifrc":
         src["title"] = f"{r['appeal_type']} {r['code']}: {r['name']}"
         props = {**common,
                  "title": f"{r['appeal_type']}: {r['name']}",
-                 "summary": ifrc_summary(r),
+                 "summary": ifrc_summary(r, generated),
                  "data_as_of": _utc(r.get("updated_at")) or f"{r['start_date']}T00:00:00Z",
                  "countries": [r["country"]],
                  "precision_class": "country",
@@ -223,7 +281,8 @@ def build_feed(records: list[dict], generated: str, health_record: dict | None =
                         "(International Federation of Red Cross and Red Crescent Societies); WHO Disease Outbreak "
                         "News (World Health Organization)."),
         "language_key": LANGUAGE_KEY,
-        "note": ("Measurements and publishers' reports only: no probability, no warning. IFRC appeals show where the "
+        "note": ("Measurements and publishers' reports only: no probability, no warning. Tier anomaly marks a "
+                 "count unusual for that place against its own past (RL-IND-1, RL-IND-2), not a warning. IFRC appeals show where the "
                  "Red Cross and Red Crescent asked for money, not every place in need: crises led by the ICRC, the "
                  "UN or governments may have no IFRC appeal."),
     }

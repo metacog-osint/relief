@@ -121,9 +121,10 @@ def page_data(snap: dict, records: list[dict], feed_doc: dict) -> dict:
     rows = []
     for r in records:
         iid = feed.item_id(r["key"])
-        summ = feed.ifrc_summary(r) if r["lane"] == "ifrc" else feed.who_summary(r)
+        summ = feed.ifrc_summary(r, snap["generated_at"]) if r["lane"] == "ifrc" else feed.who_summary(r)
+        hit = feed.rule(r["lane"], r, snap["generated_at"])
         rows.append({"id": iid, **{k: v for k, v in r.items() if k != "key"}, "summary": summ,
-                     "in_feed": not r.get("past_end_date")})
+                     "in_feed": not r.get("past_end_date"), "unusual": hit["indicator"] if hit else None})
     ccs = sorted({c for r in records for c in ([r["country"]] if r["lane"] == "ifrc" else r["countries"])})
     return {"generated_at": snap["generated_at"], "method_version": snap["method_version"], "name": feed.NAME,
             "lanes": {k: {kk: vv for kk, vv in v.items() if kk != "fetches"} for k, v in snap["lanes"].items()},
@@ -208,8 +209,17 @@ def check_all(root: Path = ROOT) -> list[str]:
         for std, sev, msg in contract.check(feat, regs):
             if sev == "error":
                 errs.append(f"{p.get('id', '?')}: {std}: {msg}")
-        if p.get("tier") != "routine" or p.get("kind") != "observation":
-            errs.append(f"{p.get('id')}: this slice publishes routine observations only")
+        if p.get("kind") != "observation" or p.get("tier") not in ("routine", "anomaly"):
+            errs.append(f"{p.get('id')}: this slice publishes observations only, tier routine or anomaly")
+        # The tier must be what the thresholds say (feed.rule), recomputed from the item's own fields.
+        if p.get("appeal") is not None:
+            hit = feed.rule("ifrc", {"place_context": p.get("place_context"), "country": (p.get("countries") or [""])[0],
+                                     "start_date": p["appeal"].get("start_date")}, doc.get("generated_at") or "")
+        else:
+            hit = feed.rule("who", {"prior_notices_730_days": (p.get("notice") or {}).get("prior_notices_730_days")},
+                            doc.get("generated_at") or "")
+        if (p.get("tier") == "anomaly") != bool(hit):
+            errs.append(f"{p.get('id')}: tier {p.get('tier')} does not match the RL-IND-1/RL-IND-2 thresholds")
     published = [data / "feed.geojson", data / "snapshot.json"]
     if (data / "ended.geojson").exists():
         published.append(data / "ended.geojson")

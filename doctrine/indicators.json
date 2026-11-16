@@ -1,18 +1,18 @@
 {
   "program": "relief",
-  "version": "0.1",
-  "note": "No warning problem yet, and no item carries an indicator_id: both indicators below are proposed, measured on every item (place_context, prior_notices_730_days), and wait for Tom to set the threshold before any item is raised to tier anomaly.",
+  "version": "0.2",
+  "note": "Thresholds set by Tom, 16 Nov 2026: an item that meets one is tier anomaly with a baseline_ref (relief/feed.py rule(); check recomputes it). No warning problem yet, so no item carries an indicator_id (the contract would then need a hypothesis); the indicator is named in the item's summary and baseline_ref id.",
   "warning_problems": [],
   "indicators": [
     {"id": "RL-IND-1",
      "text": "A country has more IFRC appeals starting in the last 90 days than its own ten-year rate makes likely.",
      "series": "ifrc_appeals_per_country_90d",
-     "rule": "proposed: Poisson tail probability of at least the observed count, at the country's mean per 90 days over the ten years before the window, below 0.01, with at least 2 appeals",
+     "rule": "set 16 Nov 2026 (Tom): an appeal that started in the last 90 days, in a country whose count in those 90 days is at least 2 and whose Poisson tail probability of at least that count, at the country's mean per 90 days over the ten years before the window, is below 0.01",
      "gentry": {"predictive": false, "diagnostic": true, "unambiguous": true, "collectable": true}},
     {"id": "RL-IND-2",
      "text": "WHO publishes an outbreak notice naming a country it has not named in the two years before.",
      "series": "who_don_notices_per_country",
-     "rule": "proposed: prior_notices_730_days is 0 for a country in the notice",
+     "rule": "set 16 Nov 2026 (Tom): prior_notices_730_days is 0 for a country in the notice (only when WHO's read reaches back the whole 730 days)",
      "gentry": {"predictive": true, "diagnostic": false, "unambiguous": true, "collectable": true}}
   ]
 }

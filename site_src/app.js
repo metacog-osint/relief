@@ -52,13 +52,15 @@
       if (!pc || !pc.appeals_last_90_days) { return; }
       by[a.country] = pc;
     });
+    // Relief's threshold (RL-IND-1, Tom 16 Nov 2026), as in relief/feed.py: under 1% with at least 2 appeals.
+    function hit(pc) { return pc.appeals_last_90_days >= 2 && pc.tail_probability < 0.01; }
     var rows = Object.keys(by).map(function (c) { return [c, by[c]]; })
       .sort(function (x, y) { return x[1].tail_probability - y[1].tail_probability || y[1].appeals_last_90_days - x[1].appeals_last_90_days; });
     var head = "<thead><tr><th scope='col'>Country</th><th scope='col'>Appeals, last 90 days</th><th scope='col'>Average per 90 days before</th><th scope='col'>Chance of this many</th></tr></thead>";
     document.getElementById("unusual").innerHTML = rows.length ? head + "<tbody>" + rows.slice(0, 15).map(function (r) {
       var p = r[1].tail_probability;
       return "<tr><td>" + esc(cname(r[0])) + "</td><td>" + esc(r[1].appeals_last_90_days) + "</td><td>" + esc(r[1].mean_per_90_days.toFixed(2)) +
-        "</td><td>" + (p < 0.05 ? '<span class="badge badge-warn">' : "<span>") + esc(p < 0.001 ? "under 0.1%" : (p * 100).toFixed(1) + "%") + "</span></td></tr>";
+        "</td><td>" + (hit(r[1]) ? '<span class="badge badge-warn">unusual, ' : "<span>") + esc(p < 0.001 ? "under 0.1%" : (p * 100).toFixed(1) + "%") + "</span></td></tr>";
     }).join("") + "</tbody>" : "<tbody><tr><td class='muted'>No appeal started in the last 90 days.</td></tr></tbody>";
   }
 
