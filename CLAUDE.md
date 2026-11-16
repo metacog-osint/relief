@@ -5,13 +5,25 @@ Tom, 15 Nov 2026: "Yes, start it" as its own program, not a Temper tab; named **
 id `relief`, item prefix `RL`, feed `tic-feed/2`, method `relief-0.1`. Groundwork:
 `_ideas/drafts/2026-10-31-humanitarian-step7.md`. Planned address `relief.theintelligence.company` (`feed.SITE`).
 
-## State, 15 Nov 2026, about 9 PM CST: built locally, not live
+## State, 15 Nov 2026, about 10:10 PM CST: deployed to Pages; custom domain waits on the CNAME
 
-- No git repo, no GitHub repo, no Pages project, no DNS, no hub or COP listing. Each needs Tom's yes. D: is the only
-  copy until there is a repo. The repo can be public from day one (fixtures are cut down on purpose), which keeps it
-  off the private-repo Actions minutes. Run the privacy audit before the first push
-  (`../_inventory/privacy-audit-2026-11-08/`): keep absolute local paths out of this file; the house-bar files
-  (`site_src/tic-*.js`, `tic-nav.css`) carry the hub's local path in their headers, as they do on every public site.
+- Public repo `metacog-osint/relief` (Tom's yes, 15 Nov evening), first commit `7272cf3`, pushed by sha after a
+  privacy audit of the staged blobs and of a fresh mirror (`../_inventory/privacy-audit-2026-11-08/`). Hits were
+  only the expected ones: the house-bar files (`site_src/tic-*.js`, `tic-nav.css`) carry the hub's local path in
+  their headers, as on every public site, and the kit and house bar list the suite's programs. Keep absolute local
+  paths out of this file. Fork PR approval set to `all_external_contributors`.
+- The push ran `update.yml` (run 43798799602, success, 25 s): tests, live collect (IFRC 366, WHO 42), check PASS,
+  history commit `f5f84fe` by relief-bot; deploy skipped because the Cloudflare secrets were not set yet. Pull before committing here: the bot commits `history/` each run.
+- Pages project `relief` created 15 Nov about 10:00 PM CST with `wrangler pages project create relief
+  --production-branch main --force` (without `--force`, wrangler 4.151 tries the new Workers-hosted Pages and fails
+  on the Pages token's scope; `--force` is needed only at creation). Its address is **`relief-ad0.pages.dev`**
+  (`relief.pages.dev` is someone else's site, ReliefViz). Repo variable `CLOUDFLARE_ACCOUNT_ID` copied from
+  Undertow's (same, only account) and secret `CLOUDFLARE_PAGES_TOKEN` set by Tom. Run 43801627637 deployed:
+  `https://relief-ad0.pages.dev/` serves "Relief: appeals and outbreaks" with a 203-item feed. Custom domain
+  `relief.theintelligence.company` added to the project through the API (pending until DNS points at it).
+- Squarespace CNAME `relief` must target `relief-ad0.pages.dev`; it was set to `relief.pages.dev` from a wrong
+  instruction of Claude's and gets HTTP 409 until changed. Squarespace asks for a Google re-verification before any
+  DNS edit, which is Tom's to do. No hub or COP listing yet.
 - The tic-doctrine registry row is still `id: humanitarian`, status planned. Renaming it to `relief` is a kit change
   (version bump, then `python tools/sync.py ../relief` from the kit's folder); the contract check does not need it.
 - Live collect 16 Nov 2026 about 02:55 UTC: IFRC 366 appeals marked active (161 current, 205 past their end date),
@@ -67,9 +79,8 @@ in `TERRITORY_POINTS`. A title whose place is not recognised gets `coverage_frac
 - The page's CSP is `style-src 'self'`: set styles through the CSSOM (see the funding bars), never in markup.
 
 ## Next (each needs Tom)
-1. `git init` and a first commit; a public repo `metacog-osint/relief` after the privacy audit; Pages project
-   `relief` and the Squarespace CNAME for `relief.theintelligence.company`; `CLOUDFLARE_PAGES_TOKEN` and
-   `CLOUDFLARE_ACCOUNT_ID` (Tom sets them). The workflow `.github/workflows/update.yml` is written, not run.
+1. Squarespace CNAME `relief` -> `relief-ad0.pages.dev`, then check `https://relief.theintelligence.company/`
+   serves the page and feed and the Pages custom domain shows active.
 2. tic-dispatch entry in the hub's `dispatch/dispatch.js`; registry row `humanitarian` -> `relief`, live, in
    tic-doctrine; hub listing and house bar; COP layer (Society family colour).
 3. HDX HAPI app identifier (encodes an email Tom chooses), IPC token (ipc@fao.org), ReliefWeb appname: the next lanes.
