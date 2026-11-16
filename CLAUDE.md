@@ -5,7 +5,7 @@ Tom, 15 Nov 2026: "Yes, start it" as its own program, not a Temper tab; named **
 id `relief`, item prefix `RL`, feed `tic-feed/2`, method `relief-0.1`. Groundwork:
 `_ideas/drafts/2026-10-31-humanitarian-step7.md`. Planned address `relief.theintelligence.company` (`feed.SITE`).
 
-## State, 15 Nov 2026, about 10:10 PM CST: deployed to Pages; custom domain waits on the CNAME
+## State, 15 Nov 2026, about 10:45 PM CST: LIVE at https://relief.theintelligence.company/
 
 - Public repo `metacog-osint/relief` (Tom's yes, 15 Nov evening), first commit `7272cf3`, pushed by sha after a
   privacy audit of the staged blobs and of a fresh mirror (`../_inventory/privacy-audit-2026-11-08/`). Hits were
@@ -21,9 +21,11 @@ id `relief`, item prefix `RL`, feed `tic-feed/2`, method `relief-0.1`. Groundwor
   Undertow's (same, only account) and secret `CLOUDFLARE_PAGES_TOKEN` set by Tom. Run 43801627637 deployed:
   `https://relief-ad0.pages.dev/` serves "Relief: appeals and outbreaks" with a 203-item feed. Custom domain
   `relief.theintelligence.company` added to the project through the API (pending until DNS points at it).
-- Squarespace CNAME `relief` must target `relief-ad0.pages.dev`; it was set to `relief.pages.dev` from a wrong
-  instruction of Claude's and gets HTTP 409 until changed. Squarespace asks for a Google re-verification before any
-  DNS edit, which is Tom's to do. No hub or COP listing yet.
+- Squarespace CNAME `relief` -> `relief-ad0.pages.dev` (Tom changed it about 10:30 PM CST; it first pointed at
+  `relief.pages.dev` from a wrong instruction of Claude's). 1.1.1.1 held the old answer (TTL 4 h) until purged with
+  `curl -X POST "https://one.one.one.one/api/v1/purge?domain=relief.theintelligence.company&type=CNAME"`; the Pages
+  domain went active 16 Nov 04:44 UTC. Checked: page 200 with valid TLS, title "Relief: appeals and outbreaks",
+  feed 203 items, CSP header present, no console errors. No hub or COP listing yet.
 - The tic-doctrine registry row is still `id: humanitarian`, status planned. Renaming it to `relief` is a kit change
   (version bump, then `python tools/sync.py ../relief` from the kit's folder); the contract check does not need it.
 - Live collect 16 Nov 2026 about 02:55 UTC: IFRC 366 appeals marked active (161 current, 205 past their end date),
@@ -79,9 +81,7 @@ in `TERRITORY_POINTS`. A title whose place is not recognised gets `coverage_frac
 - The page's CSP is `style-src 'self'`: set styles through the CSSOM (see the funding bars), never in markup.
 
 ## Next (each needs Tom)
-1. Squarespace CNAME `relief` -> `relief-ad0.pages.dev`, then check `https://relief.theintelligence.company/`
-   serves the page and feed and the Pages custom domain shows active.
-2. tic-dispatch entry in the hub's `dispatch/dispatch.js`; registry row `humanitarian` -> `relief`, live, in
+1. tic-dispatch entry in the hub's `dispatch/dispatch.js`; registry row `humanitarian` -> `relief`, live, in
    tic-doctrine; hub listing and house bar; COP layer (Society family colour).
-3. HDX HAPI app identifier (encodes an email Tom chooses), IPC token (ipc@fao.org), ReliefWeb appname: the next lanes.
-4. Thresholds for RL-IND-1 and RL-IND-2.
+2. HDX HAPI app identifier (encodes an email Tom chooses), IPC token (ipc@fao.org), ReliefWeb appname: the next lanes.
+3. Thresholds for RL-IND-1 and RL-IND-2.
