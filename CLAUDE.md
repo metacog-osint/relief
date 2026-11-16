@@ -30,9 +30,10 @@ id `relief`, item prefix `RL`, feed `tic-feed/2`, method `relief-0.1`. Groundwor
   live, family Society, prefix `RL-WP`, fresh 12 h, stale 36 h) synced here; house bar v2.1 (Relief in the Programs
   menu, Human layer, beta) here, in COP and on the hub; COP layer pushed (`society` preset, earth brown `#8C510A`;
   COP's snapshot carried all 203 items at 06:48 UTC); hub listing, OE drawing and tic-dispatch job (:00 past 02,
-  08, 14, 20 UTC) pushed, and the dispatch Worker redeployed. Still Tom's: the hub site's Firebase deploy (the
-  auto-mode check refused it) and adding `relief` to the `tic-dispatch` GitHub token's repositories (until then the
-  dispatched starts get 404 and Relief's own cron, 17 past every 6th hour, carries it).
+  08, 14, 20 UTC) pushed, and the dispatch Worker redeployed. Tom deployed the hub site 16 Nov 06:58 UTC
+  (checked: Relief card "Beta", Updated line, house bar v2.1, CSP allows Relief). Tom says he added `relief` to the
+  `tic-dispatch` token; the first dispatched start (08:00 UTC 16 Nov) shows whether it took (a `workflow_dispatch`
+  run in Relief's run list). Relief's own cron, 17 past every 6th hour, is the fallback.
 - 16 Nov about 12:30 AM CST another session rewrote this repo's GitHub history (same content, new shas, plus its kit
   0.5.8 sync). The pre-rewrite local history is kept as branch `backup/pre-remote-rewrite-2026-11-16`.
 - Live collect 16 Nov 2026 about 02:55 UTC: IFRC 366 appeals marked active (161 current, 205 past their end date),
@@ -88,7 +89,6 @@ in `TERRITORY_POINTS`. A title whose place is not recognised gets `coverage_frac
 - The page's CSP is `style-src 'self'`: set styles through the CSSOM (see the funding bars), never in markup.
 
 ## Next (each needs Tom)
-1. Tom: deploy the hub site (`firebase deploy --only hosting:hub --project context-484804` from a clean worktree at
-   `df037c2` or later) and add `relief` to the `tic-dispatch` token.
+1. Check Relief's run list for a `workflow_dispatch` run at 08:00 UTC 16 Nov (the dispatch token).
 2. HDX HAPI app identifier (encodes an email Tom chooses), IPC token (ipc@fao.org), ReliefWeb appname: the next lanes.
 3. Thresholds for RL-IND-1 and RL-IND-2.
