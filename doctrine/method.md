@@ -1,4 +1,4 @@
-# Method: Relief, relief-0.1
+# Method: Relief, relief-0.2
 
 ## What it measures
 Two publishers' own records, read each run from their public APIs with no key:
@@ -10,15 +10,20 @@ Two publishers' own records, read each run from their public APIs with no key:
   and place read from WHO's title, the countries and WHO regions named, the date and a link.
 
 Each item is the publisher's report (kind observation, status reported, source grade A2). Nothing here is a
-judgment, a probability or a warning.
+judgment, a probability or a warning. An item is tier anomaly when it meets RL-IND-1 or RL-IND-2 below: unusual
+for that place against its own past, still a measurement.
 
 ## How unusual for this place
 - **Appeals.** For each country, the number of IFRC appeals that started in the last 90 days, against that
   country's own average per 90 days over the ten years before the window (`place_context`). The window's own
   appeals never count toward the baseline. The Poisson tail probability of at least that many is published with
-  it. It is a measurement only: no tier rule is set on it yet (indicator RL-IND-1, proposed, waits for review).
+  it. **RL-IND-1** (set 16 Nov 2026): an appeal that started in the last 90 days is tier anomaly when its
+  country has at least 2 appeals in those 90 days and the tail probability is below 0.01. Older appeals in the
+  same country stay routine: the count is about what started recently.
 - **Outbreak notices.** For each country a notice names, how many earlier WHO notices named it in the two years
-  before (`prior_notices_730_days`). "First in two years" is a measurement (RL-IND-2, proposed).
+  before (`prior_notices_730_days`). **RL-IND-2** (set 16 Nov 2026): a notice naming a country with no WHO
+  notice in the two years before is tier anomaly. It is left unset when WHO's read does not reach back the whole
+  two years before the notice.
 
 ## What it cannot show
 - An IFRC appeal shows where the Red Cross and Red Crescent asked for money. Crises the ICRC leads (most armed
@@ -51,3 +56,5 @@ waits on an identifier or token that Tom requests. IOM DTM is link-only (its ter
 
 ## Change log
 - relief-0.1 (16 Nov 2026): first slice, IFRC appeals and WHO Disease Outbreak News.
+- relief-0.2 (16 Nov 2026): thresholds for RL-IND-1 (p < 0.01, at least 2 appeals) and RL-IND-2 (first WHO
+  notice for a country in two years) set by Tom; items that meet one are tier anomaly with a `baseline_ref`.

@@ -2,7 +2,7 @@
 
 Humanitarian response: roadmap step 7 and the top unbuilt slice in the suite's ideas file `_ideas/new-programs.md`, beside this folder (rank 2).
 Tom, 15 Nov 2026: "Yes, start it" as its own program, not a Temper tab; named **Relief** the same evening. Program
-id `relief`, item prefix `RL`, feed `tic-feed/2`, method `relief-0.1`. Groundwork:
+id `relief`, item prefix `RL`, feed `tic-feed/2`, method `relief-0.2` (thresholds set 16 Nov 2026). Groundwork:
 `_ideas/drafts/2026-10-31-humanitarian-step7.md`. Planned address `relief.theintelligence.company` (`feed.SITE`).
 
 ## State, 15 Nov 2026, about 10:45 PM CST: LIVE at https://relief.theintelligence.company/
@@ -75,13 +75,19 @@ match longest first on word boundaries, with WHO's forms in `ALIASES` and French
 in `TERRITORY_POINTS`. A title whose place is not recognised gets `coverage_fraction` 0 and is listed in
 `extra.who.unread_places`. Add a name to `ALIASES` and a test case when one appears.
 
-## Measurements (no tier rule yet; Tom's call)
+## Measurements and thresholds (set by Tom 16 Nov 2026: "Adopt both thresholds"; method relief-0.2)
 - `place_context` on each appeal: appeals started in the country in the last 90 days, the country's mean per 90 days
-  over the ten years before (the window's own appeals excluded), and the Poisson tail probability. Indicator RL-IND-1
-  proposes anomaly at p < 0.01 with at least 2 appeals. On 16 Nov the lowest was Panama, 2 against 0.30 (p 0.038).
-- `prior_notices_730_days` on each WHO notice: WHO's notices naming each country in the two years before. RL-IND-2
-  proposes "first in two years".
-- Every item is tier routine, kind observation. `check` fails anything else.
+  over the ten years before (the window's own appeals excluded), and the Poisson tail probability. **RL-IND-1:** an
+  appeal that started in the 90-day window is tier anomaly when its country has at least 2 appeals in the window
+  and p < 0.01; older appeals in that country stay routine.
+- `prior_notices_730_days` on each WHO notice: WHO's notices naming each country in the two years before (from
+  WHO's titles; unset when the read does not reach back two years). **RL-IND-2:** any country at 0 makes the notice
+  tier anomaly.
+- `feed.rule()` is the one statement of both; `check` recomputes it from each item's fields and fails a tier that
+  disagrees, or any kind but observation. Anomalies carry `baseline_ref`; no `indicator_id` (no warning problem, and
+  the contract would then want a hypothesis). 16 Nov 15:40 UTC: 5 anomalies, all RL-IND-2 (Qatar MERS, France
+  Shamonda, Kenya and Nigeria in the Bundibugyo Ebola notice, Russia, Italy H9N2); no appeal met RL-IND-1 (lowest
+  Panama, 2 against 0.30, p 0.038).
 
 ## Hard rules
 - **Terms.** IFRC GO: non-commercial, analyses allowed, no copying of the data bank (the ten-year read is counts
@@ -96,5 +102,13 @@ in `TERRITORY_POINTS`. A title whose place is not recognised gets `coverage_frac
 ## Next (each needs Tom)
 1. Tom adds `metacog-osint/relief` to the `tic-dispatch` token's repository access; then check for a
    `workflow_dispatch` run at the next :00 past 02, 08, 14 or 20 UTC.
-2. HDX HAPI app identifier (encodes an email Tom chooses), IPC token (ipc@fao.org), ReliefWeb appname: the next lanes.
-3. Thresholds for RL-IND-1 and RL-IND-2.
+2. Keys for the next lanes (checked 16 Nov 2026: none set as repo secrets or User env vars):
+   - HDX HAPI: `GET https://hapi.humdata.org/api/v2/encode_app_identifier?application=..&email=..` returns
+     `encoded_app_identifier` (base64 of `application:email`, no account; API 0.9.15). Planned names: User env var
+     and repo secret `HDX_HAPI_APP_IDENTIFIER`; Tom picks the email.
+   - ReliefWeb: pre-approved `appname` on every call, requested through the Google Form linked from
+     `apidoc.reliefweb.int`; ReliefWeb replies by email.
+   - IPC: `api.ipcinfo.org` answers 401 "API key required". IPC's API page and terms (ipcinfo.org) sit behind a
+     Cloudflare bot check, so Claude could not read them; search results say keys come from a request form on that
+     page, are non-transferable, one per implementation, support ipc-tech-support@fao.org. Read the terms of use for
+     free public redistribution before building the lane.
