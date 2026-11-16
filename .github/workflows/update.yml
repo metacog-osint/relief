@@ -1,0 +1,95 @@
+name: update
+# Written 16 Nov 2026, modelled on Undertow's; NOT live: no repo, Pages project or secrets exist yet (each needs
+# Tom's yes). Every 6 hours (to be started by the hub's tic-dispatch Worker, because GitHub fires schedules 4-9 h
+# late; its own cron is the fallback), on every push to main, and by hand: the tests, the last run's snapshot from
+# the Actions cache, a live collection, the build and check, the history log, then a deploy of site/ to Cloudflare
+# Pages.
+#
+# State: a failed lane keeps its last good copy, which needs the run before's data/snapshot.json. It holds only
+# derived records (no WHO notice text) and is kept in the Actions cache. The raw replies in data/raw/ are never
+# cached, committed or published (neither publisher allows bulk reposting).
+#
+# Secrets: CLOUDFLARE_PAGES_TOKEN (Cloudflare Pages: Edit) and repo variable CLOUDFLARE_ACCOUNT_ID. Without them
+# everything runs except the deploy. No source needs a key.
+#
+# PROJECT below is the Pages project name; change it when Tom names the program.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+permissions:
+  contents: write     # the history/ commit
+concurrency:
+  group: update
+  cancel-in-progress: false
+env:
+  PROJECT: relief
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.12" }
+      - uses: actions/setup-node@v7
+        with: { node-version: "22" }
+      - name: Tests (offline, cut-down recorded replies)
+        run: python -m unittest discover -s tests
+      - name: Doctrine registers, and the vendored kit copy unedited
+        run: |
+          python doctrine/kit/tic.py registers doctrine
+          python doctrine/kit/tic.py kitcheck
+      - name: Last run's snapshot from the Actions cache (none on the first run)
+        id: state
+        uses: actions/cache/restore@v6
+        with:
+          path: data/snapshot.json
+          key: relief-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: relief-state-
+      - name: Say so when there was no state
+        if: steps.state.outputs.cache-matched-key == ''
+        run: echo "::warning::No snapshot in the Actions cache, so a lane that fails this run has no last good copy."
+      - name: Live collection (a failed lane keeps its last good copy and says so on the page)
+        run: python tools/relief.py collect
+      - name: Build site/
+        run: python tools/relief.py build
+      - name: Check (registers, feed linter, terms scan)
+        run: python tools/relief.py check
+      - name: History (history/, and site/data/ended.geojson)
+        run: |
+          git fetch -q --depth=1 origin main && git checkout -q FETCH_HEAD -- history 2>/dev/null \
+            || echo "::warning::could not take history/ from main's tip; using this checkout's"
+          python doctrine/kit/tic.py history site/data/feed.geojson --dir history --ended site/data/ended.geojson \
+            || { echo "::warning::history step failed; this run is missing from history/"; exit 0; }
+          git config user.name "relief-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          stamp="history: $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3; do
+            git fetch -q --depth=1 origin main && git reset -q --mixed FETCH_HEAD || { sleep $((i * 15)); continue; }
+            git add history
+            git diff --cached --quiet -- history && { echo "history: nothing new"; exit 0; }
+            git commit -q -m "$stamp" && git push -q origin HEAD:main && exit 0
+            echo "::warning::history push attempt $i failed"
+            sleep $((i * 15))
+          done
+          echo "::warning::history not committed this run; the next run logs these changes again from the last state"
+      - name: Check again, now with site/data/ended.geojson in the terms scan
+        run: python tools/relief.py check
+      - name: Keep this run's snapshot for the next run
+        uses: actions/cache/save@v6
+        with:
+          path: data/snapshot.json
+          key: relief-state-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Deploy site/ to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PAGES_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "Cloudflare secrets not set; skipping deploy"; exit 0
+          fi
+          npx --yes wrangler@4.151.3 pages deploy site --project-name "$PROJECT" --branch main \
+            --commit-hash "$GITHUB_SHA" --commit-message "update $GITHUB_SHA" --commit-dirty=true

@@ -1,0 +1,5 @@
+{
+  "program": "relief",
+  "note": "No National Critical Function is tagged in this slice: appeals and outbreak notices describe needs and response, not the functioning of infrastructure. Functions (for example provide_medical_care) wait for the HAPI and IPC lanes.",
+  "rules": []
+}

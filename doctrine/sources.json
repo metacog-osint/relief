@@ -1,0 +1,52 @@
+{
+  "program": "relief",
+  "version": "0.1",
+  "sources": [
+    {
+      "id": "ifrc-go-appeals",
+      "name": "IFRC GO appeals API (goadmin.ifrc.org/api/v2/appeal/): active appeals, and every appeal since ten years ago for each country's own record",
+      "url": "https://goadmin.ifrc.org/api/v2/appeal/",
+      "licence": "IFRC GO terms and conditions (read 16 Nov 2026 from the GO web app's source, IFRCGo/go-web-app): data visible to everyone; non-commercial use such as research; maps, charts and analyses allowed; no copying or redistribution of the data bank or a substantial part of it. Published: active and recent appeals as facts with a link; the ten-year read is used for counts only",
+      "use": "ingest",
+      "grade": "A2",
+      "independence_group": "ifrc"
+    },
+    {
+      "id": "who-don",
+      "name": "WHO Disease Outbreak News API (www.who.int/api/news/diseaseoutbreaknews), two pages of 100",
+      "url": "https://www.who.int/emergencies/disease-outbreak-news",
+      "licence": "WHO website terms of use (read 16 Nov 2026): extracts may be reproduced for research, not for commercial purposes, with acknowledgement of WHO; substantial portions need written permission. Published: title, date, place read from the title, and a link; no notice text",
+      "use": "ingest",
+      "grade": "A2",
+      "independence_group": "who"
+    },
+    {
+      "id": "hdx-hapi",
+      "name": "OCHA HDX HAPI: humanitarian needs, funding, food security and displacement by admin-1 (a planned lane; linked only until it is built)",
+      "url": "https://hapi.humdata.org",
+      "licence": "HAPI terms name no data licence; HDX licences are set per dataset and read per record",
+      "use": "link"
+    },
+    {
+      "id": "ipc-api",
+      "name": "IPC food insecurity phases (API token by request) (a planned lane; linked only until it is built)",
+      "url": "https://www.ipcinfo.org/",
+      "licence": "not yet read",
+      "use": "link"
+    },
+    {
+      "id": "reliefweb-api",
+      "name": "ReliefWeb reports and disasters (pre-approved appname needed) (a planned lane; linked only until it is built)",
+      "url": "https://apidoc.reliefweb.int/",
+      "licence": "per report; not yet read",
+      "use": "link"
+    },
+    {
+      "id": "iom-dtm",
+      "name": "IOM Displacement Tracking Matrix",
+      "url": "https://dtm.iom.int/terms-and-conditions",
+      "licence": "Terms forbid redistribution and derivative works: link only",
+      "use": "link"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "program": "relief",
+  "version": "0.1",
+  "review_by": "2027-02-15",
+  "requirements": [
+    {"id": "RL-REQ-1", "type": "standing",
+     "question": "Where are humanitarian needs and acute health emergencies emerging, and how well is the international response funded?"},
+    {"id": "RL-PIR-1", "type": "pir", "parent": "RL-REQ-1",
+     "question": "Which IFRC Emergency Appeals and DREF allocations have opened, where, for what hazard, and for how many people?",
+     "series": ["ifrc_go_appeals"]},
+    {"id": "RL-PIR-2", "type": "pir", "parent": "RL-REQ-1",
+     "question": "How much of each active IFRC Emergency Appeal is funded?",
+     "series": ["ifrc_go_appeals"]},
+    {"id": "RL-PIR-3", "type": "pir", "parent": "RL-REQ-1",
+     "question": "Which acute public health events has WHO reported in its Disease Outbreak News, and in which countries?",
+     "series": ["who_don"]},
+    {"id": "RL-EEI-1", "type": "eei", "parent": "RL-PIR-1",
+     "question": "How unusual is each country's number of IFRC appeals in the last 90 days against its own record over the previous ten years?",
+     "series": ["ifrc_go_appeals"]}
+  ]
+}
