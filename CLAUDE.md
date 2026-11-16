@@ -34,6 +34,11 @@ id `relief`, item prefix `RL`, feed `tic-feed/2`, method `relief-0.1`. Groundwor
   (checked: Relief card "Beta", Updated line, house bar v2.1, CSP allows Relief). Tom says he added `relief` to the
   `tic-dispatch` token; the first dispatched start (08:00 UTC 16 Nov) shows whether it took (a `workflow_dispatch`
   run in Relief's run list). Relief's own cron, 17 past every 6th hour, is the fallback.
+- **Dispatch check, 16 Nov 15:20 UTC: the token did not take.** No `workflow_dispatch` run in Relief's list at
+  08:00 or 14:00 UTC, while the live `tic-dispatch` code has Relief's job and started Undertow (same hours, :30) at
+  08:30 and 14:30. So `DISPATCH_TOKEN` lacks Relief's repository access; Tom told once. No scheduled run had fired
+  either since 07:02 UTC, so the live feed sat at 07:02 with the IFRC lane marked failing (one 502 at 07:02; a local
+  collect at 15:20 read IFRC fine, 367). Worktree `_wt/cop-relief` was already gone; `_wt/hub-relief` (merged) removed.
 - 16 Nov about 12:30 AM CST another session rewrote this repo's GitHub history (same content, new shas, plus its kit
   0.5.8 sync). The pre-rewrite local history is kept as branch `backup/pre-remote-rewrite-2026-11-16`.
 - Live collect 16 Nov 2026 about 02:55 UTC: IFRC 366 appeals marked active (161 current, 205 past their end date),
@@ -89,6 +94,7 @@ in `TERRITORY_POINTS`. A title whose place is not recognised gets `coverage_frac
 - The page's CSP is `style-src 'self'`: set styles through the CSSOM (see the funding bars), never in markup.
 
 ## Next (each needs Tom)
-1. Check Relief's run list for a `workflow_dispatch` run at 08:00 UTC 16 Nov (the dispatch token).
+1. Tom adds `metacog-osint/relief` to the `tic-dispatch` token's repository access; then check for a
+   `workflow_dispatch` run at the next :00 past 02, 08, 14 or 20 UTC.
 2. HDX HAPI app identifier (encodes an email Tom chooses), IPC token (ipc@fao.org), ReliefWeb appname: the next lanes.
 3. Thresholds for RL-IND-1 and RL-IND-2.
