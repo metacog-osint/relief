@@ -100,15 +100,30 @@ in `TERRITORY_POINTS`. A title whose place is not recognised gets `coverage_frac
 - The page's CSP is `style-src 'self'`: set styles through the CSSOM (see the funding bars), never in markup.
 
 ## Next (each needs Tom)
-1. Tom adds `metacog-osint/relief` to the `tic-dispatch` token's repository access; then check for a
-   `workflow_dispatch` run at the next :00 past 02, 08, 14 or 20 UTC.
-2. Keys for the next lanes (checked 16 Nov 2026: none set as repo secrets or User env vars):
-   - HDX HAPI: `GET https://hapi.humdata.org/api/v2/encode_app_identifier?application=..&email=..` returns
-     `encoded_app_identifier` (base64 of `application:email`, no account; API 0.9.15). Planned names: User env var
-     and repo secret `HDX_HAPI_APP_IDENTIFIER`; Tom picks the email.
-   - ReliefWeb: pre-approved `appname` on every call, requested through the Google Form linked from
-     `apidoc.reliefweb.int`; ReliefWeb replies by email.
-   - IPC: `api.ipcinfo.org` answers 401 "API key required". IPC's API page and terms (ipcinfo.org) sit behind a
-     Cloudflare bot check, so Claude could not read them; search results say keys come from a request form on that
-     page, are non-transferable, one per implementation, support ipc-tech-support@fao.org. Read the terms of use for
-     free public redistribution before building the lane.
+1. Dispatch token: done. Tom added Relief 16 Nov; dispatched runs every 6 h since 16 Nov 20:00 UTC (checked 18 Nov).
+2. Keys for the next lanes (16 Nov 2026):
+   - HDX HAPI: **set.** User env var and repo secret `HDX_HAPI_APP_IDENTIFIER` (Tom, 18:29 UTC; app name
+     `TIC-Relief`, Tom's chosen email). Made with `GET https://hapi.humdata.org/api/v2/encode_app_identifier`
+     (`application`, `email`; returns `encoded_app_identifier`, base64 of `application:email`, no account; API
+     0.9.15). Checked: `/api/v2/metadata/location` answers with it. The HAPI lane can be built.
+   - ReliefWeb: **approved** 18 Nov 01:55 UTC (ReliefWeb adjusted the name Tom sent to its naming standard; the
+     approved name is in ReliefWeb's email to Tom). Checked: `api.reliefweb.int/v2/reports` answers with it. **Set**
+     18 Nov 15:04 UTC as User env var and repo secret `RELIEFWEB_APPNAME`; keep the name itself out of this public
+     repo (and out of logged URLs). The ReliefWeb lane can be built.
+   - Building either lane: `update.yml` does not pass these secrets to `collect` yet (add them as step `env:`); a
+     lane without its key must fail as a lane (last good copy kept), never break the run; check its terms (HDX
+     dataset licences, ReliefWeb's terms) for free public non-commercial redistribution before publishing.
+   - IPC: not requested yet. `api.ipcinfo.org` answers 401 "API key required". Request through the "Request access
+     to the API" form on `ipcinfo.org/ipc-country-analysis/api/` (Cloudflare check; Tom's browser passes it). Terms
+     read 16 Nov from Tom's saved copy of `API_TermsofUse-March2023.pdf` (IPC-CH API Terms of Use v2.0, March 2023):
+     - Data licence **CC BY-NC-SA 3.0 IGO**: free public non-commercial redistribution allowed, so items need that
+       licence carried (ShareAlike) and the credit "IPC CC BY-NC-SA 3.0 IGO", the data's last-updated date and a link
+       to ipcinfo.org (plus cadreharmonise.org for Cadre Harmonisé data). Other commercial use needs IPC's consent.
+     - "The IPC and the CH reject and forbid any use of their data for military purposes" (section II, repeated in
+       IV.7); also "Do No Harm", and a caution on aggregating with other datasets. Tom's call how TIC's framing sits
+       with this; raised with him 16 Nov.
+     - Key confidential, non-transferable, one per implementation (Relief's workflow is one); use must match the
+       purpose stated on the request form, and a change of purpose must be reported. IPC may name the requesting
+       organisation and use its logo. Questions: ipc-tech-support@fao.org. API docs: docs.api.ipcinfo.org.
+     - HDX HAPI's food-security data comes from IPC, so the same terms likely travel with it; read HAPI's licence
+       fields per dataset before publishing IPC figures from either route.
