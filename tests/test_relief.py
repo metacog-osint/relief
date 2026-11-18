@@ -9,6 +9,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+import urllib.parse
 from datetime import date
 from pathlib import Path
 
@@ -18,7 +19,7 @@ sys.path.insert(0, str(ROOT / "doctrine" / "kit" / "python"))
 
 import importlib.util  # noqa: E402
 
-from relief import feed, ifrc, places, who_don  # noqa: E402
+from relief import feed, hapi, ifrc, iso, places, reliefweb, who_don  # noqa: E402
 
 # The CLI (tools/relief.py) shares its name with the package, so it is loaded by path, not by import.
 _spec = importlib.util.spec_from_file_location("relief_cli", ROOT / "tools" / "relief.py")
@@ -28,9 +29,28 @@ from tic_doctrine import contract, registers  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures"
 NOW = "2026-11-16T02:00:00Z"
+KEYS = {"HDX_HAPI_APP_IDENTIFIER": "test-hapi-identifier", "RELIEFWEB_APPNAME": "test-relief-appname"}
+SEEN: list[str] = []
 
 
 def getter(url: str, timeout: int) -> bytes:
+    SEEN.append(url)
+    for k in KEYS.values():
+        assert k not in url, "a key reached a URL the getter (and the raw index) sees"
+    if "hapi.humdata.org" in url:
+        if "offset=0" not in url:
+            return json.dumps({"data": []}).encode()
+        name = ("hapi_funding.json" if "coordination-context/funding" in url else
+                "hapi_needs.json" if "humanitarian-needs" in url else "hapi_resources.json")
+        return (FIX / name).read_bytes()
+    if "data.humdata.org/api/3/action/package_show" in url:
+        stub = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["id"][0]
+        return (FIX / f"hdx_package_{stub}.json").read_bytes()
+    if "api.reliefweb.int" in url:
+        if "/disasters?" in url:
+            return (FIX / "rw_disasters.json").read_bytes()
+        frm = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["filter[value][from]"][0]
+        return (FIX / ("rw_week.json" if frm == reliefweb.windows(NOW)["week"][0] else "rw_baseline.json")).read_bytes()
     if "goadmin.ifrc.org" in url:
         return (FIX / ("ifrc_active.json" if "status=0" in url else "ifrc_history.json")).read_bytes()
     if "who.int/api" in url:
@@ -42,6 +62,18 @@ def getter(url: str, timeout: int) -> bytes:
 
 def failing(url: str, timeout: int) -> bytes:
     raise OSError("network down")
+
+
+def catalogue_down(url: str, timeout: int) -> bytes:
+    if "data.humdata.org" in url:
+        raise OSError("bot check")
+    return getter(url, timeout)
+
+
+def leaky(url: str, timeout: int) -> bytes:
+    if "api.reliefweb.int" in url:
+        raise OSError(f"refused for {KEYS['RELIEFWEB_APPNAME']}")
+    return getter(url, timeout)
 
 
 class Places(unittest.TestCase):
@@ -98,6 +130,32 @@ class Baseline(unittest.TestCase):
         self.assertEqual(ctx["appeals_in_baseline"], 1)
 
 
+class Iso(unittest.TestCase):
+    def test_codes(self):
+        self.assertEqual(iso.a2("hti"), "HT")
+        self.assertEqual(iso.a2("XKX"), "XK")
+        self.assertIsNone(iso.a2("wld"))
+        self.assertEqual(len(set(iso.ALPHA3.values())), len(iso.ALPHA3))
+
+
+class HapiNeeds(unittest.TestCase):
+    def test_total_preferred(self):
+        rows = [{"location_code": "MMR", "reference_period_start": "2025-01-01T00:00:00", "sector_code": "Intersectoral",
+                 "admin_level": 0, "category": c, "population_status": "INN", "population": n, "resource_hdx_id": "r"}
+                for c, n in (("", 1957173), ("total", 19902649))]
+        self.assertEqual(hapi.needs_by_country(rows)[("MM", 2025)]["people_in_need"], 19902649)
+
+    def test_licence_gate(self):
+        fund = json.loads((FIX / "hapi_funding.json").read_text(encoding="utf-8"))["data"]
+        res = json.loads((FIX / "hapi_resources.json").read_text(encoding="utf-8"))["data"]
+        recs, extra = hapi.build(fund, [], res, {}, date(2026, 11, 16))   # no licence read: nothing published
+        self.assertEqual(recs, [])
+        self.assertGreater(extra["left_out"]["licence"], 0)
+        recs, _ = hapi.build(fund, [], res, {r["dataset_hdx_stub"]: "cc-by-igo" for r in res}, date(2026, 11, 16))
+        self.assertTrue(recs)
+        self.assertTrue(all(r["appeal_code"] != hapi.NOT_SPECIFIED for r in recs))
+
+
 class Thresholds(unittest.TestCase):
     GEN = "2026-11-16T12:00:00Z"   # window starts 2026-08-18
 
@@ -121,6 +179,23 @@ class Thresholds(unittest.TestCase):
         self.assertIsNone(feed.rule("who", {"prior_notices_730_days": None}, self.GEN))  # read too short
         self.assertIsNone(feed.rule("who", {"prior_notices_730_days": {}}, self.GEN))
 
+    def test_ind3(self):
+        r = {"country": "XX", "year": 2026, "needs": {"people_in_need": 125, "people_in_need_prior_year": 100}}
+        self.assertEqual(feed.rule("hapi", r, self.GEN)["indicator"], "RL-IND-3")
+        self.assertIsNone(feed.rule("hapi", {**r, "needs": {"people_in_need": 124, "people_in_need_prior_year": 100}},
+                                    self.GEN))
+        self.assertIsNone(feed.rule("hapi", {**r, "needs": {"people_in_need": 500, "people_in_need_prior_year": None}},
+                                    self.GEN))
+        self.assertIsNone(feed.rule("hapi", {**r, "needs": None}, self.GEN))
+
+    def test_ind4(self):
+        rep = reliefweb.attention(11, 18)       # 11 against 1.5 a week
+        r = {"record": "country", "country": "XX", "reports": rep}
+        self.assertEqual(feed.rule("reliefweb", r, self.GEN)["indicator"], "RL-IND-4")
+        self.assertIsNone(feed.rule("reliefweb", {**r, "reports": reliefweb.attention(9, 0)}, self.GEN))   # under 10
+        self.assertIsNone(feed.rule("reliefweb", {**r, "reports": reliefweb.attention(12, 120)}, self.GEN))  # usual
+        self.assertIsNotNone(feed.rule("reliefweb", {**r, "reports": reliefweb.attention(10, 0)}, self.GEN))  # new
+
 
 class Pipeline(unittest.TestCase):
     def setUp(self):
@@ -131,14 +206,15 @@ class Pipeline(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def run_once(self, g=getter):
-        snap = cli.collect(self.tmp, getter=g, now=NOW)
+    def run_once(self, g=getter, keys=KEYS):
+        snap = cli.collect(self.tmp, getter=g, now=NOW, keys=keys)
         cli.build_site(self.tmp)
         return snap
 
     def test_collect_build_check(self):
         snap = self.run_once()
-        self.assertEqual({k: v["status"] for k, v in snap["lanes"].items()}, {"ifrc": "ok", "who": "ok"})
+        self.assertEqual({k: v["status"] for k, v in snap["lanes"].items()},
+                         {"ifrc": "ok", "who": "ok", "hapi": "ok", "reliefweb": "ok"})
         self.assertEqual(cli.check_all(self.tmp), [])
         doc = json.loads((self.tmp / "site" / "data" / "feed.geojson").read_text(encoding="utf-8"))
         regs = registers.ids(self.tmp / "doctrine")
@@ -146,7 +222,42 @@ class Pipeline(unittest.TestCase):
         for f in doc["features"]:
             errs = [m for _, sev, m in contract.check(f, regs) if sev == "error"]
             self.assertEqual(errs, [], f["properties"]["id"])
-        self.assertEqual(set(doc["health"]), {"ifrc-go-appeals", "who-don"})
+        self.assertEqual(set(doc["health"]), {"ifrc-go-appeals", "who-don", "hdx-hapi", "reliefweb-api"})
+        lanes = {f["properties"]["id"].split("-")[1] for f in doc["features"]}
+        self.assertEqual(lanes, {"IFRC", "WHO", "HAPI", "RW", "RWC"})
+        # The recorded week has Rwanda at 11 reports against 1.5 a week: an RL-IND-4 country item.
+        rwc = [f["properties"] for f in doc["features"] if f["properties"]["id"].startswith("RL-RWC-")]
+        self.assertTrue(rwc and all(p["tier"] == "anomaly" for p in rwc))
+        self.assertEqual(snap["extra"]["hapi"]["licences"]["global-hpc-hno"]["read"], "live")
+
+    def test_keys_never_recorded(self):
+        snap = self.run_once()
+        data = self.tmp / "data"
+        recorded = (data / "raw" / "index.jsonl").read_text(encoding="utf-8") + (data / "snapshot.json").read_text(
+            encoding="utf-8") + "".join(p.read_text(encoding="utf-8") for p in (self.tmp / "site" / "data").glob("*"))
+        for k in KEYS.values():
+            self.assertNotIn(k, recorded)
+        self.assertTrue(any("api.reliefweb.int" in u for u in SEEN))
+        self.assertEqual(cli.terms_scan(list((self.tmp / "site" / "data").glob("*")), keys=KEYS), [])
+        self.assertTrue(snap["lanes"]["reliefweb"]["fetches"])
+
+    def test_key_scrubbed_from_errors(self):
+        snap = self.run_once(g=leaky)
+        self.assertEqual(snap["lanes"]["reliefweb"]["status"], "failed")
+        self.assertNotIn(KEYS["RELIEFWEB_APPNAME"], json.dumps(snap))
+        self.assertIn("<key>", snap["lanes"]["reliefweb"]["error"])
+
+    def test_missing_key_fails_only_that_lane(self):
+        snap = self.run_once(keys={})
+        st = {k: v["status"] for k, v in snap["lanes"].items()}
+        self.assertEqual(st, {"ifrc": "ok", "who": "ok", "hapi": "failed", "reliefweb": "failed"})
+        self.assertIn("not set", snap["lanes"]["reliefweb"]["error"])
+        self.assertEqual(cli.check_all(self.tmp), [])
+
+    def test_licence_read_falls_back_to_recorded(self):
+        snap = self.run_once(g=catalogue_down)
+        self.assertEqual(snap["lanes"]["hapi"]["status"], "ok")
+        self.assertTrue(all(v["read"].startswith("recorded") for v in snap["extra"]["hapi"]["licences"].values()))
 
     def test_anomaly_items_pass_contract_and_check(self):
         snap = self.run_once()
@@ -159,12 +270,17 @@ class Pipeline(unittest.TestCase):
         who = [r for r in snap["records"]["who"] if r.get("prior_notices_730_days")]
         if who:
             who[0]["prior_notices_730_days"] = {cc: 0 for cc in who[0]["prior_notices_730_days"]}
+        plan = next(r for r in snap["records"]["hapi"] if r.get("needs"))
+        plan["needs"] = {**plan["needs"], "people_in_need": 200, "people_in_need_prior_year": 100}
+        dis = snap["records"]["reliefweb"][0]
+        dis["reports"] = reliefweb.attention(30, 12)
         cli.build_site(self.tmp, snapshot=snap)
         self.assertEqual(cli.check_all(self.tmp), [])
         doc = json.loads((self.tmp / "site" / "data" / "feed.geojson").read_text(encoding="utf-8"))
         regs = registers.ids(self.tmp / "doctrine")
         anomalies = [f for f in doc["features"] if f["properties"]["tier"] == "anomaly"]
-        self.assertTrue(any(f["properties"]["id"] == feed.item_id(target["key"]) for f in anomalies))
+        for rec in (target, plan, dis):
+            self.assertTrue(any(f["properties"]["id"] == feed.item_id(rec["key"]) for f in anomalies), rec["key"])
         for f in anomalies:
             self.assertIn("baseline_ref", f["properties"])
             self.assertIn("nusual", f["properties"]["summary"])
@@ -181,15 +297,20 @@ class Pipeline(unittest.TestCase):
             txt = p.read_text(encoding="utf-8")
             self.assertNotIn("fixture: WHO notice text removed", txt, p.name)
             self.assertNotIn("paraeid", txt, p.name)
+            self.assertNotIn("fixture: ReliefWeb", txt, p.name)   # ReliefWeb's disaster names never copied
 
     def test_terms_scan_catches_body(self):
         p = self.tmp / "bad.geojson"
         p.write_text('{"Overview": "<p paraeid=\\"x\\">t</p>"}', encoding="utf-8")
         self.assertTrue(cli.terms_scan([p]))
+        for bad in ('{"description": "x"}', '{"ipc_phase": "3"}', '{"u": "https://reliefweb.int/disaster/x?appname=y"}',
+                    '{"t": "' + KEYS["RELIEFWEB_APPNAME"] + '"}', '{"t": "[fixture: ReliefWeb name removed]"}'):
+            p.write_text(bad, encoding="utf-8")
+            self.assertTrue(cli.terms_scan([p], keys=KEYS), bad)
 
     def test_failed_lane_keeps_last_good_copy(self):
         first = self.run_once()
-        second = cli.collect(self.tmp, getter=failing, now="2026-11-16T08:00:00Z")
+        second = cli.collect(self.tmp, getter=failing, now="2026-11-16T08:00:00Z", keys=KEYS)
         for lane in cli.LANES:
             st = second["lanes"][lane]
             self.assertEqual(st["status"], "failed")
@@ -201,7 +322,7 @@ class Pipeline(unittest.TestCase):
         self.assertEqual({v["state"] for v in doc["health"].values()}, {"failing"})
 
     def test_no_made_up_data(self):
-        snap = cli.collect(self.tmp, getter=failing, now=NOW)
+        snap = cli.collect(self.tmp, getter=failing, now=NOW, keys=KEYS)
         self.assertEqual(sum(len(v) for v in snap["records"].values()), 0)
 
     def test_who_lane_published_window(self):

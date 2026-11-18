@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Relief: appeals and outbreaks</title>
-<meta name="description" content="IFRC Emergency Appeals and DREF allocations, with how much is funded and how unusual each country's count is for that country, and WHO's Disease Outbreak News. Publishers' records only.">
+<title>Relief: appeals, plans and outbreaks</title>
+<meta name="description" content="IFRC Emergency Appeals and DREF allocations, UN-coordinated humanitarian plans with their needs and funding, the disasters ReliefWeb tracks, and WHO's Disease Outbreak News, each against the place's own past. Publishers' records only.">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="tic-time.css">
 <link rel="stylesheet" href="tic-nav.css">
@@ -25,10 +25,10 @@
 
 <main class="wrap">
   <section class="hero">
-    <h1>Where the Red Cross and Red Crescent are asking for help, and where WHO is reporting outbreaks.</h1>
-    <p class="lede">Each row is the publisher's own record: an IFRC Emergency Appeal or DREF allocation, or a WHO Disease
-      Outbreak News notice. An IFRC appeal shows where the IFRC asked for money, not every place in need. Crises the
-      ICRC, the UN or a government leads may have no IFRC appeal.</p>
+    <h1>Where humanitarian appeals and plans are open, how well they are funded, and where WHO is reporting outbreaks.</h1>
+    <p class="lede">Each row is the publisher's own record: an IFRC Emergency Appeal or DREF allocation, a UN-coordinated
+      plan as OCHA's Financial Tracking Service records it, a disaster ReliefWeb tracks, or a WHO Disease Outbreak News
+      notice. An appeal or a plan shows where money was asked for, not every place in need.</p>
     <p class="small muted" id="asof" aria-live="polite">Loading…</p>
     <div class="tiles" id="tiles" aria-live="polite"></div>
   </section>
@@ -60,6 +60,30 @@
     <div class="scroll"><table id="who"></table></div>
   </section>
 
+  <section class="card" aria-labelledby="pl-h">
+    <div class="card-head"><h2 id="pl-h">UN-coordinated plans this year: needs and funding</h2>
+      <p class="muted small">OCHA's Financial Tracking Service (FTS): each plan or appeal for each country, what it requires
+        and how much funding has been reported against it, in US dollars, largest first. People in need are the
+        intersectoral figure in the country's own plan (OCHA's Humanitarian Programme Cycle), against last year's plan.
+        At least 25% more people in need than last year is marked unusual (indicator RL-IND-3), a measurement against
+        the country's own past, not a warning. Plans change scope between years, so a fall can be a narrower plan.
+        Read through the HDX Humanitarian API; CC BY-IGO 3.0, shares and changes added by Relief.</p></div>
+    <div class="scroll"><table id="plans"></table></div>
+    <p class="small muted" id="plan-gap"></p>
+  </section>
+
+  <section class="card" aria-labelledby="rw-h">
+    <div class="card-head"><h2 id="rw-h">Disasters ReliefWeb tracks now, and how much it is reporting</h2>
+      <p class="muted small">Disasters ReliefWeb marks ongoing or alert, with the number of reports ReliefWeb posted on
+        each in the last 7 days against its average per week over the 12 weeks before. At least 10 reports and under a
+        1% chance at that average is marked unusual (indicator RL-IND-4). A count of reports measures reporting
+        attention, not need. ReliefWeb's terms allow no republishing of its text, so only types, countries, GLIDE
+        numbers, dates, counts and links are shown.</p></div>
+    <div class="scroll"><table id="rw"></table></div>
+    <h3 class="small">Reports by main country, last 7 days, most unusual first</h3>
+    <div class="scroll"><table id="rwc"></table></div>
+  </section>
+
   <section class="card" aria-labelledby="ap-h">
     <div class="card-head"><h2 id="ap-h">Active and recent IFRC appeals</h2></div>
     <div class="filters">
@@ -88,8 +112,19 @@
           <tr><td>WHO</td><td>The Disease Outbreak News API: the last 200 notices; the last 12 months are shown</td><td>Extracts
             for research with acknowledgement, not for commercial use. Title, date and link only; no notice text is kept.
             Source: World Health Organization</td></tr>
+          <tr><td>OCHA (FTS and the Humanitarian Programme Cycle), through HDX HAPI</td><td>The HDX Humanitarian API: plan
+            requirements and funding (FTS), and each country's intersectoral people in need and targeted; each dataset's
+            licence is read from HDX every run</td><td>CC BY-IGO 3.0 (<a href="https://creativecommons.org/licenses/by/3.0/igo/" rel="noopener">licence</a>):
+            figures as published, with Relief's funded shares and year-on-year changes added. Sources: OCHA Financial
+            Tracking Service; OCHA Humanitarian Programme Cycle; via HDX HAPI, OCHA Centre for Humanitarian Data</td></tr>
+          <tr><td>ReliefWeb (OCHA)</td><td>The ReliefWeb API: disasters marked ongoing or alert, and the number of reports
+            posted on each disaster and country</td><td>Personal, non-commercial use; no redistribution or compilation.
+            Counts, ids, dates and links only: no ReliefWeb names, descriptions or report text. Source: ReliefWeb</td></tr>
         </tbody>
       </table></div>
+      <p class="small">Not read: IPC food-security phases, held while IPC's own terms (non-commercial, no military use)
+        and HDX's public-domain listing disagree; IOM DTM displacement figures (no redistribution); ACLED conflict events
+        (ACLED's own terms).</p>
       <h3>Collection</h3>
       <div id="lanes"></div>
     </div>
@@ -98,7 +133,7 @@
 
 <footer class="wrap foot small muted">
   <p>Relief, The Intelligence Company. Public information only, non-commercial. Not
-    affiliated with the IFRC or WHO.</p>
+    affiliated with the IFRC, WHO, OCHA or ReliefWeb.</p>
 </footer>
 <script src="app.js"></script>
 </body>

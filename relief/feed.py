@@ -7,8 +7,13 @@ threshold is met (Tom, 16 Nov 2026), then "anomaly", a measurement against the p
 - RL-IND-1: an appeal that started in the last 90 days, in a country with at least 2 appeals in those 90 days and
   a Poisson tail probability below 0.01 at that country's rate over the ten years before (`place_context`).
 - RL-IND-2: a WHO notice naming a country WHO had not named in the 730 days before (`prior_notices_730_days`).
+- RL-IND-3: a country's UN-coordinated plan whose intersectoral people in need is at least 25% above last year's
+  plan for that country (`needs`, from OCHA HPC via HDX HAPI). Tom, 18 Nov 2026.
+- RL-IND-4: a ReliefWeb disaster, or a country as ReliefWeb's main country of a report, with at least 10 reports in
+  the last 7 days and a Poisson tail probability below 0.01 at its own weekly mean over the 12 weeks before
+  (`reports`). Tom, 18 Nov 2026.
 
-`rule()` is the one statement of both; the build and `check` both call it.
+`rule()` is the one statement of all four; the build and `check` both call it.
 """
 from __future__ import annotations
 
@@ -26,7 +31,7 @@ from . import places  # noqa: E402
 PROGRAM = "relief"
 NAME = "Relief"  # Tom, 15 Nov 2026
 SITE = "https://relief.theintelligence.company"  # planned address; no DNS or Pages project yet
-METHOD = "relief-0.2"  # 0.2: RL-IND-1 and RL-IND-2 thresholds set (Tom, 16 Nov 2026)
+METHOD = "relief-0.3"  # 0.2: RL-IND-1/2 set (Tom, 16 Nov 2026); 0.3: HAPI and ReliefWeb lanes, RL-IND-3/4 (18 Nov)
 LANGUAGE_KEY = "https://github.com/metacog-osint/tic-doctrine/blob/main/docs/language-key.md"
 
 SOURCES = {
@@ -43,14 +48,40 @@ SOURCES = {
             "independence_group": "who", "source_type": "official notice (UN agency)",
             "descriptor": "WHO's Disease Outbreak News notice of an acute public health event, usually after a "
                           "member state's notification under the International Health Regulations."},
+    "hapi": {"id": "hdx-hapi", "publisher": "OCHA Financial Tracking Service (FTS), via HDX HAPI (OCHA Centre for "
+                                            "Humanitarian Data)",
+             "licence": "CC BY-IGO 3.0 (HDX dataset global-requirements-and-funding-data): credit OCHA FTS, link the "
+                        "licence, say what was changed",
+             "licence_url": "https://creativecommons.org/licenses/by/3.0/igo/",
+             "independence_group": "ocha-fts", "source_type": "UN coordination body (funding records)",
+             "descriptor": "OCHA FTS's record of a UN-coordinated humanitarian plan or appeal for a country: what it "
+                           "requires and how much funding has been reported against it, in US dollars."},
+    "reliefweb": {"id": "reliefweb-api", "publisher": "ReliefWeb (OCHA)",
+                  "licence": "ReliefWeb terms and conditions: personal, non-commercial use; no redistribution or "
+                             "compilation, so counts, ids, dates and links only, no ReliefWeb text",
+                  "independence_group": "reliefweb", "source_type": "UN information service (disaster tracking)",
+                  "descriptor": "ReliefWeb's own record of a disaster it tracks (GLIDE number, type, countries, "
+                                "status, dates) and the number of reports it posted, counted by Relief."},
 }
-REQUIREMENT = {"ifrc": ["RL-PIR-1", "RL-PIR-2", "RL-EEI-1"], "who": ["RL-PIR-3"]}
+NEEDS_SOURCE = {"id": "hdx-hapi-needs", "publisher": "OCHA Humanitarian Programme Cycle (Humanitarian Needs "
+                                                     "Overviews), via HDX HAPI",
+                "licence": "CC BY-IGO 3.0 (HDX dataset global-hpc-hno): credit OCHA, link the licence, say what was "
+                           "changed",
+                "licence_url": "https://creativecommons.org/licenses/by/3.0/igo/",
+                "independence_group": "ocha-hpc", "source_type": "UN coordination body (needs assessment)",
+                "descriptor": "OCHA's intersectoral count of people in need and people targeted in a country's "
+                              "humanitarian response plan, from its Humanitarian Needs Overview."}
+REQUIREMENT = {"ifrc": ["RL-PIR-1", "RL-PIR-2", "RL-EEI-1"], "who": ["RL-PIR-3"],
+               "hapi": ["RL-PIR-4", "RL-EEI-2"], "reliefweb": ["RL-PIR-5", "RL-EEI-3"]}
 
 
 # Thresholds, Tom 16 Nov 2026 ("Adopt both thresholds").
 IND1_P = 0.01        # RL-IND-1: tail probability strictly below this
 IND1_MIN = 2         # RL-IND-1: at least this many appeals in the window
 RECENT_DAYS = 90     # the window place_context counts (ifrc.RECENT_DAYS)
+IND3_RISE = 0.25     # RL-IND-3: people in need at least 25% above last year's plan (Tom, 18 Nov 2026)
+IND4_MIN = 10        # RL-IND-4: at least this many reports in 7 days (Tom, 18 Nov 2026)
+IND4_P = 0.01        # RL-IND-4: tail probability strictly below this
 
 
 def recent_from(generated: str) -> str:
@@ -69,8 +100,34 @@ def ind2(prior: dict | None) -> list[str]:
     return sorted(cc for cc, n in (prior or {}).items() if n == 0)
 
 
+def ind3(needs: dict | None) -> bool:
+    if not needs:
+        return False
+    pin, prev = needs.get("people_in_need"), needs.get("people_in_need_prior_year")
+    return bool(pin is not None and prev and pin >= prev * (1 + IND3_RISE))
+
+
+def ind4(rep: dict | None) -> bool:
+    return bool(rep and rep.get("reports_last_7_days", 0) >= IND4_MIN
+                and rep.get("tail_probability") is not None and rep["tail_probability"] < IND4_P)
+
+
 def rule(lane: str, r: dict, generated: str) -> dict | None:
     """The anomaly a record meets, or None. `r` is a collected record (or an item's equivalent fields)."""
+    if lane == "hapi":
+        if not ind3(r.get("needs")):
+            return None
+        return {"indicator": "RL-IND-3",
+                "baseline_ref": {"id": f"relief-hpc-needs-{r['country']}", "type": "fixed", "version": METHOD,
+                                 "window": f"the country's {int(r['year']) - 1} plan"}}
+    if lane == "reliefweb":
+        rp = r.get("reports")
+        if not ind4(rp):
+            return None
+        tag = f"disaster-{r['disaster_id']}" if r.get("record") == "disaster" else f"country-{r['country']}"
+        return {"indicator": "RL-IND-4",
+                "baseline_ref": {"id": f"relief-reliefweb-reports-{tag}", "type": "rolling", "version": METHOD,
+                                 "window": "the 12 weeks before the last 7 days"}}
     if lane == "ifrc":
         pc = r.get("place_context")
         if not ind1(pc, r.get("start_date"), recent_from(generated)):
@@ -174,6 +231,88 @@ def who_summary(r: dict) -> str:
     return " ".join(bits)
 
 
+def _usd(x: float | None) -> str:
+    return "USD " + (f"{x / 1e9:,.2f} billion" if x and x >= 1e9 else f"{x / 1e6:,.1f} million" if x and x >= 1e6
+                     else f"{(x or 0):,.0f}")
+
+
+def hapi_title(r: dict) -> str:
+    name = r["appeal_name"] or r["appeal_code"]
+    if r["appeal_type"] == "Regional response plan":
+        name += f" ({_name(r['country'])})"
+    return f"UN humanitarian plan: {name}"
+
+
+def hapi_summary(r: dict) -> str:
+    bits = [f"OCHA's Financial Tracking Service records {r['appeal_name'] or r['appeal_code']} ({r['appeal_type']}, "
+            f"{r['year']}) for {_name(r['country'])}: {_usd(r['requirements_usd'])} required, "
+            f"{_usd(r['funding_usd'])} funded"
+            + (f" ({r['funded_share']:.0%})." if r.get("funded_share") is not None else ".")]
+    pp = r.get("prior_year_plan")
+    if pp:
+        bits.append(f"Last year's plan of this type ({pp['appeal_code']}): {_usd(pp['requirements_usd'])} required, "
+                    + (f"{pp['funded_share']:.0%} funded." if pp.get("funded_share") is not None else "funding unstated."))
+    n = r.get("needs")
+    if n and n.get("people_in_need") is not None:
+        s = f"The plan counts {n['people_in_need']:,} people in need"
+        if n.get("people_targeted"):
+            s += f" and targets {n['people_targeted']:,}"
+        s += f" in {n['year']}"
+        if n.get("people_in_need_prior_year"):
+            ch = n["people_in_need"] / n["people_in_need_prior_year"] - 1
+            s += f", against {n['people_in_need_prior_year']:,} in need in {n['year'] - 1} ({ch:+.0%})"
+        bits.append(s + ".")
+        if ind3(n):
+            bits.append(f"Unusual for {_name(r['country'])} (RL-IND-3): people in need are at least 25% above last "
+                        f"year's plan.")
+    bits.append("FTS counts the funding reported to it against the plan.")
+    return " ".join(bits)
+
+
+def rw_title(r: dict) -> str:
+    if r.get("record") == "country":
+        return f"ReliefWeb reporting on {_name(r['country'])}: {r['reports']['reports_last_7_days']} reports in 7 days"
+    return f"ReliefWeb disaster: {r.get('hazard') or 'disaster'}, {_where(r['countries'])}, from " \
+           f"{_day_text(r.get('event_day'))}"
+
+
+def _where(ccs: list[str], most: int = 3) -> str:
+    names = [_name(c) for c in ccs]
+    if not names:
+        return "no country stated"
+    return ", ".join(names) if len(names) <= most else ", ".join(names[:most]) + f" and {len(names) - most} more"
+
+
+def rw_summary(r: dict) -> str:
+    rp = r["reports"]
+    count = (f"{rp['reports_last_7_days']} report{'' if rp['reports_last_7_days'] == 1 else 's'} in the last 7 days, "
+             f"against an average of {rp['mean_per_week']:.2f} per week over the {rp['baseline_weeks']} weeks before")
+    if r.get("record") == "country":
+        bits = [f"ReliefWeb posted {count}, with {_name(r['country'])} as the main country of the report."]
+    else:
+        where = ", ".join(_name(c) for c in r["countries"]) or "no country stated"
+        bits = [f"ReliefWeb tracks this disaster ({r.get('hazard') or 'type not stated'}) in {where}"
+                + (f", GLIDE {r['glide']}" if r.get("glide") else "")
+                + f"; event date {_day_text(r.get('event_day'))}, status {r.get('status')}.",
+                f"ReliefWeb posted {count.replace(' in the last 7 days', ' on it in the last 7 days', 1)}."]
+    if ind4(rp):
+        bits.append(f"Unusual (RL-IND-4): at that average, the chance of {rp['reports_last_7_days']} or more in a "
+                    f"week is {_pct(rp['tail_probability'])}, below the 1% threshold.")
+    bits.append("A count of reports measures reporting attention, not need.")
+    return " ".join(bits)
+
+
+def summary(r: dict, generated: str) -> str:
+    lane = r["lane"]
+    if lane == "ifrc":
+        return ifrc_summary(r, generated)
+    if lane == "who":
+        return who_summary(r)
+    if lane == "hapi":
+        return hapi_summary(r)
+    return rw_summary(r)
+
+
 def _ordinal(n: int) -> str:
     return "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
 
@@ -213,6 +352,52 @@ def feature(r: dict, generated: str) -> dict:
         if not _utc(r.get("updated_at")):
             props["data_as_of_precision"] = "day"
         geom = _geometry([r["country"]])
+    elif lane == "hapi":
+        fs = r.get("funding_source") or {}
+        src.update({"title": f"FTS: {r['appeal_code']} {r['appeal_name']}", "url": r["url"]})
+        if fs.get("licence"):
+            src["licence"] = f"{fs['licence']} (HDX dataset {fs.get('dataset')}): credit OCHA FTS, link the licence, " \
+                             "say what was changed"
+        sources = [src]
+        n = r.get("needs")
+        if n:
+            ns = dict(NEEDS_SOURCE)
+            ns.update({"url": (n.get("source") or {}).get("url"), "grade": "A2", "accessed_at": generated,
+                       "title": f"HPC needs, {_name(r['country'])} {n['year']}"})
+            sources.append(ns)
+        props = {**common,
+                 "title": hapi_title(r),
+                 "summary": hapi_summary(r),
+                 "data_as_of": _utc(fs.get("updated")) or f"{r['period_start']}T00:00:00Z",
+                 "countries": [r["country"]],
+                 "precision_class": "country",
+                 "coverage_fraction": 1.0,
+                 "sources": sources,
+                 "plan": {k: r.get(k) for k in ("appeal_code", "appeal_name", "appeal_type", "year", "period_start",
+                                                "period_end", "requirements_usd", "funding_usd", "funded_share",
+                                                "prior_year_plan")},
+                 "needs": {k: v for k, v in n.items() if k != "source"} if n else None}
+        if not _utc(fs.get("updated")):
+            props["data_as_of_precision"] = "day"
+        geom = _geometry([r["country"]])
+    elif lane == "reliefweb":
+        src["title"] = rw_title(r)
+        props = {**common,
+                 "title": rw_title(r),
+                 "summary": rw_summary(r),
+                 "data_as_of": generated if r.get("record") == "country" else (r.get("changed_at") or generated),
+                 "countries": r["countries"],
+                 "precision_class": "country" if r["countries"] else "none",
+                 "coverage_fraction": 1.0,
+                 "sources": [src],
+                 "reports": r["reports"]}
+        if r.get("record") == "country":
+            props["status_class"] = "assessed"   # Relief's own count of ReliefWeb's posts
+            props["reporting"] = {"country": r["country"], "window": r.get("window")}
+        else:
+            props["disaster"] = {k: r.get(k) for k in ("disaster_id", "glide", "status", "hazard", "hazard_code",
+                                                       "types", "event_day", "created_day")}
+        geom = _geometry(r["countries"])
     else:
         src["title"] = r["title"]
         src["published_at"] = f"{r['published_day']}T00:00:00Z"
@@ -231,13 +416,19 @@ def feature(r: dict, generated: str) -> dict:
     return {"type": "Feature", "geometry": geom, "properties": props}
 
 
+def _day_only(ts: str | None) -> str | None:
+    return ts[:10] if ts else None
+
+
 def health(lanes: dict, records: list[dict]) -> dict:
     """Per-source health, keyed by the source id the items carry (the key the kit's history log and COP read),
     in Cordon's, Headwind's and Undertow's shape. State is "up" when the lane was read on its last run and
     "failing" when not; its last good items stay in the feed."""
     newest: dict[str, str] = {}
     for r in records:
-        d = r.get("start_date") if r["lane"] == "ifrc" else r.get("published_day")
+        d = {"ifrc": lambda: r.get("start_date"), "who": lambda: r.get("published_day"),
+             "hapi": lambda: _day_only((r.get("funding_source") or {}).get("updated")),
+             "reliefweb": lambda: _day_only(r.get("changed_at"))}[r["lane"]]()
         if d and d > newest.get(r["lane"], ""):
             newest[r["lane"]] = d
     out = {}
@@ -276,13 +467,18 @@ def build_feed(records: list[dict], generated: str, health_record: dict | None =
         "method_version": METHOD,
         "licence": ("Relief's own text: CC BY 4.0 (The Intelligence Company). Each item keeps its source's "
                     "terms: IFRC GO, non-commercial use with credit, no bulk redistribution; WHO, extracts for "
-                    "research with acknowledgement, title, date and link only."),
+                    "research with acknowledgement, title, date and link only; OCHA FTS and OCHA HPC via HDX HAPI, "
+                    "CC BY-IGO 3.0 (https://creativecommons.org/licenses/by/3.0/igo/), amounts and counts as "
+                    "published, with Relief's shares and changes added; ReliefWeb, counts, ids, dates and links "
+                    "only."),
         "attribution": ("Relief, The Intelligence Company. Sources: IFRC GO "
                         "(International Federation of Red Cross and Red Crescent Societies); WHO Disease Outbreak "
-                        "News (World Health Organization)."),
+                        "News (World Health Organization); OCHA Financial Tracking Service and OCHA Humanitarian "
+                        "Programme Cycle, via the HDX Humanitarian API (OCHA Centre for Humanitarian Data); "
+                        "ReliefWeb (OCHA)."),
         "language_key": LANGUAGE_KEY,
         "note": ("Measurements and publishers' reports only: no probability, no warning. Tier anomaly marks a "
-                 "count unusual for that place against its own past (RL-IND-1, RL-IND-2), not a warning. IFRC appeals show where the "
+                 "count unusual for that place against its own past (RL-IND-1 to RL-IND-4), not a warning. IFRC appeals show where the "
                  "Red Cross and Red Crescent asked for money, not every place in need: crises led by the ICRC, the "
                  "UN or governments may have no IFRC appeal."),
     }

@@ -1,21 +1,84 @@
 {
   "program": "relief",
-  "version": "0.1",
+  "version": "0.2",
   "review_by": "2027-02-15",
   "requirements": [
-    {"id": "RL-REQ-1", "type": "standing",
-     "question": "Where are humanitarian needs and acute health emergencies emerging, and how well is the international response funded?"},
-    {"id": "RL-PIR-1", "type": "pir", "parent": "RL-REQ-1",
-     "question": "Which IFRC Emergency Appeals and DREF allocations have opened, where, for what hazard, and for how many people?",
-     "series": ["ifrc_go_appeals"]},
-    {"id": "RL-PIR-2", "type": "pir", "parent": "RL-REQ-1",
-     "question": "How much of each active IFRC Emergency Appeal is funded?",
-     "series": ["ifrc_go_appeals"]},
-    {"id": "RL-PIR-3", "type": "pir", "parent": "RL-REQ-1",
-     "question": "Which acute public health events has WHO reported in its Disease Outbreak News, and in which countries?",
-     "series": ["who_don"]},
-    {"id": "RL-EEI-1", "type": "eei", "parent": "RL-PIR-1",
-     "question": "How unusual is each country's number of IFRC appeals in the last 90 days against its own record over the previous ten years?",
-     "series": ["ifrc_go_appeals"]}
+    {
+      "id": "RL-REQ-1",
+      "type": "standing",
+      "question": "Where are humanitarian needs and acute health emergencies emerging, and how well is the international response funded?"
+    },
+    {
+      "id": "RL-PIR-1",
+      "type": "pir",
+      "parent": "RL-REQ-1",
+      "question": "Which IFRC Emergency Appeals and DREF allocations have opened, where, for what hazard, and for how many people?",
+      "series": [
+        "ifrc_go_appeals"
+      ]
+    },
+    {
+      "id": "RL-PIR-2",
+      "type": "pir",
+      "parent": "RL-REQ-1",
+      "question": "How much of each active IFRC Emergency Appeal is funded?",
+      "series": [
+        "ifrc_go_appeals"
+      ]
+    },
+    {
+      "id": "RL-PIR-3",
+      "type": "pir",
+      "parent": "RL-REQ-1",
+      "question": "Which acute public health events has WHO reported in its Disease Outbreak News, and in which countries?",
+      "series": [
+        "who_don"
+      ]
+    },
+    {
+      "id": "RL-EEI-1",
+      "type": "eei",
+      "parent": "RL-PIR-1",
+      "question": "How unusual is each country's number of IFRC appeals in the last 90 days against its own record over the previous ten years?",
+      "series": [
+        "ifrc_go_appeals"
+      ]
+    },
+    {
+      "id": "RL-PIR-4",
+      "type": "pir",
+      "parent": "RL-REQ-1",
+      "question": "Which UN-coordinated humanitarian plans and appeals are open for each country this year, what do they require, and how much of that is funded?",
+      "series": [
+        "hdx_hapi_funding"
+      ]
+    },
+    {
+      "id": "RL-EEI-2",
+      "type": "eei",
+      "parent": "RL-PIR-4",
+      "question": "How many people does each country's plan count in need and target, and how has that changed since last year's plan?",
+      "series": [
+        "hdx_hapi_humanitarian_needs"
+      ]
+    },
+    {
+      "id": "RL-PIR-5",
+      "type": "pir",
+      "parent": "RL-REQ-1",
+      "question": "Which disasters does ReliefWeb currently track (ongoing or alert), where, and of what type?",
+      "series": [
+        "reliefweb_disasters"
+      ]
+    },
+    {
+      "id": "RL-EEI-3",
+      "type": "eei",
+      "parent": "RL-PIR-5",
+      "question": "How unusual is the number of ReliefWeb reports on each current disaster and each country in the last 7 days against its own last 12 weeks?",
+      "series": [
+        "reliefweb_report_counts"
+      ]
+    }
   ]
 }
