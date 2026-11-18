@@ -8,6 +8,8 @@
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="tic-time.css">
 <link rel="stylesheet" href="tic-nav.css">
+<link rel="stylesheet" href="tic-tabs.css">
+<link rel="stylesheet" href="tic-fold.css">
 <script src="tic-time.js"></script>
 <script src="tic-nav.js" defer data-current="relief"></script>
 </head>
@@ -33,6 +35,8 @@
     <div class="tiles" id="tiles" aria-live="polite"></div>
   </section>
 
+  <div data-tic-tabs>
+  <div id="sec-unusual" data-tab-label="Unusual">
   <section class="card" aria-labelledby="un-h">
     <div class="card-head"><h2 id="un-h">Unusual for the place</h2>
       <p class="muted small">Countries with IFRC appeals starting in the last 90 days, ranked by how unlikely that many
@@ -42,47 +46,17 @@
     <div class="scroll"><table id="unusual"></table></div>
   </section>
 
+  </div>
+  <div id="sec-appeals" data-tab-label="Appeals">
   <section class="card" aria-labelledby="fu-h">
     <div class="card-head"><h2 id="fu-h">How much of each Emergency Appeal is funded</h2>
       <p class="muted small">Current IFRC Emergency Appeals (marked active, end date not passed), least funded first, in
         Swiss francs as IFRC states them. DREF allocations are left out: they are normally funded in full when
         approved. IFRC keeps many appeals marked active after their end date; those are in the table below, marked,
         and left out here, in the totals and in the feed.</p></div>
-    <div id="funding" class="bars"></div>
-    <button type="button" id="fu-more" class="more-btn" hidden>Show all</button>
+    <div id="funding" class="bars" data-tic-fold="10 15"></div>
   </section>
 
-  <section class="card" aria-labelledby="who-h">
-    <div class="card-head"><h2 id="who-h">WHO outbreak notices, last 12 months</h2>
-      <p class="muted small">Disease and place as WHO's title gives them, with a link to WHO's notice. WHO publishes after
-        it has verified an event, often weeks after the first report. "First" marks a country no WHO notice named in
-        the two years before (indicator RL-IND-2): unusual for the place, not a warning.</p></div>
-    <div class="scroll"><table id="who"></table></div>
-  </section>
-
-  <section class="card" aria-labelledby="pl-h">
-    <div class="card-head"><h2 id="pl-h">UN-coordinated plans this year: needs and funding</h2>
-      <p class="muted small">OCHA's Financial Tracking Service (FTS): each plan or appeal for each country, what it requires
-        and how much funding has been reported against it, in US dollars, largest first. People in need are the
-        intersectoral figure in the country's own plan (OCHA's Humanitarian Programme Cycle), against last year's plan.
-        At least 25% more people in need than last year is marked unusual (indicator RL-IND-3), a measurement against
-        the country's own past, not a warning. Plans change scope between years, so a fall can be a narrower plan.
-        Read through the HDX Humanitarian API; CC BY-IGO 3.0, shares and changes added by Relief.</p></div>
-    <div class="scroll"><table id="plans"></table></div>
-    <p class="small muted" id="plan-gap"></p>
-  </section>
-
-  <section class="card" aria-labelledby="rw-h">
-    <div class="card-head"><h2 id="rw-h">Disasters ReliefWeb tracks now, and how much it is reporting</h2>
-      <p class="muted small">Disasters ReliefWeb marks ongoing or alert, with the number of reports ReliefWeb posted on
-        each in the last 7 days against its average per week over the 12 weeks before. At least 10 reports and under a
-        1% chance at that average is marked unusual (indicator RL-IND-4). A count of reports measures reporting
-        attention, not need. ReliefWeb's terms allow no republishing of its text, so only types, countries, GLIDE
-        numbers, dates, counts and links are shown.</p></div>
-    <div class="scroll"><table id="rw"></table></div>
-    <h3 class="small">Reports by main country, last 7 days, most unusual first</h3>
-    <div class="scroll"><table id="rwc"></table></div>
-  </section>
 
   <section class="card" aria-labelledby="ap-h">
     <div class="card-head"><h2 id="ap-h">Active and recent IFRC appeals</h2></div>
@@ -92,10 +66,49 @@
       <label><input id="f-past" type="checkbox" checked> Hide those past their end date</label>
       <span class="small muted" id="f-count"></span>
     </div>
-    <div class="scroll"><table id="appeals"></table></div>
-    <button type="button" id="more" class="more-btn" hidden>Show more</button>
+    <div class="scroll"><table id="appeals" data-tic-fold="10 25"></table></div>
+  </section>
+  </div>
+  <div id="sec-outbreaks" data-tab-label="Outbreaks">
+  <section class="card" aria-labelledby="who-h">
+    <div class="card-head"><h2 id="who-h">WHO outbreak notices, last 12 months</h2>
+      <p class="muted small">Disease and place as WHO's title gives them, with a link to WHO's notice. WHO publishes after
+        it has verified an event, often weeks after the first report. "First" marks a country no WHO notice named in
+        the two years before (indicator RL-IND-2): unusual for the place, not a warning.</p></div>
+    <div class="scroll"><table id="who" data-tic-fold data-tic-fold-find></table></div>
   </section>
 
+  </div>
+  <div id="sec-plans" data-tab-label="Plans">
+  <section class="card" aria-labelledby="pl-h">
+    <div class="card-head"><h2 id="pl-h">UN-coordinated plans this year: needs and funding</h2>
+      <p class="muted small">OCHA's Financial Tracking Service (FTS): each plan or appeal for each country, what it requires
+        and how much funding has been reported against it, in US dollars, largest first. People in need are the
+        intersectoral figure in the country's own plan (OCHA's Humanitarian Programme Cycle), against last year's plan.
+        At least 25% more people in need than last year is marked unusual (indicator RL-IND-3), a measurement against
+        the country's own past, not a warning. Plans change scope between years, so a fall can be a narrower plan.
+        Read through the HDX Humanitarian API; CC BY-IGO 3.0, shares and changes added by Relief.</p></div>
+    <div class="scroll"><table id="plans" data-tic-fold data-tic-fold-find></table></div>
+    <p class="small muted" id="plan-gap"></p>
+  </section>
+
+  </div>
+  <div id="sec-disasters" data-tab-label="Disasters">
+  <section class="card" aria-labelledby="rw-h">
+    <div class="card-head"><h2 id="rw-h">Disasters ReliefWeb tracks now, and how much it is reporting</h2>
+      <p class="muted small">Disasters ReliefWeb marks ongoing or alert, with the number of reports ReliefWeb posted on
+        each in the last 7 days against its average per week over the 12 weeks before. At least 10 reports and under a
+        1% chance at that average is marked unusual (indicator RL-IND-4). A count of reports measures reporting
+        attention, not need. ReliefWeb's terms allow no republishing of its text, so only types, countries, GLIDE
+        numbers, dates, counts and links are shown.</p></div>
+    <div class="scroll"><table id="rw" data-tic-fold data-tic-fold-find></table></div>
+    <h3 class="small">Reports by main country, last 7 days, most unusual first</h3>
+    <div class="scroll"><table id="rwc"></table></div>
+  </section>
+
+
+  </div>
+  <div id="sec-method" data-tab-label="Method">
   <section class="card" id="method" aria-labelledby="me-h">
     <div class="card-head"><h2 id="me-h">Method and licences</h2></div>
     <div class="prose">
@@ -129,12 +142,16 @@
       <div id="lanes"></div>
     </div>
   </section>
+  </div>
+  </div>
 </main>
 
 <footer class="wrap foot small muted">
   <p>Relief, The Intelligence Company. Public information only, non-commercial. Not
     affiliated with the IFRC, WHO, OCHA or ReliefWeb.</p>
 </footer>
+<script src="tic-tabs.js"></script>
+<script src="tic-fold.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

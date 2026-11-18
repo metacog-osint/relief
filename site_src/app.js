@@ -2,7 +2,6 @@
 (function () {
   "use strict";
 
-  var PAGE = 50;
   var T = window.TicTime;
 
   function esc(v) {
@@ -30,7 +29,7 @@
   function pct(x) { return x === null || x === undefined ? "–" : Math.round(x * 100) + "%"; }
   function link(url, label) { return '<a href="' + esc(url) + '" rel="noopener">' + esc(label) + "</a>"; }
 
-  var S, NAMES, appeals = [], notices = [], plans = [], disasters = [], filtered = [], shown = PAGE, fuAll = false;
+  var S, NAMES, appeals = [], notices = [], plans = [], disasters = [], filtered = [];
   function cname(c) { return NAMES[c] || c; }
 
   // "Current": IFRC marks it Active and its end date has not passed. IFRC keeps many appeals Active long after
@@ -79,8 +78,7 @@
   function funding() {
     var ea = appeals.filter(function (a) { return a.appeal_type === "Emergency Appeal" && current(a) && a.amount_requested_chf > 0; })
       .sort(function (x, y) { return (x.funded_share || 0) - (y.funded_share || 0); });
-    var list = fuAll ? ea : ea.slice(0, 15);
-    document.getElementById("funding").innerHTML = list.map(function (a) {
+    document.getElementById("funding").innerHTML = ea.map(function (a) {
       var w = Math.max(0, Math.min(1, a.funded_share || 0)) * 100;
       return '<div class="bar-row"><div class="bar-label">' + link(a.url, a.name) + ' <span class="muted small">' + esc(day(a.start_date)) +
         " to " + esc(day(a.end_date)) + '</span></div>' +
@@ -91,8 +89,6 @@
     Array.prototype.forEach.call(document.querySelectorAll("#funding .bar span[data-w]"), function (el) {
       el.style.width = el.getAttribute("data-w") + "%";
     });
-    var b = document.getElementById("fu-more");
-    b.hidden = fuAll || ea.length <= 15;
   }
 
   function whoTable() {
@@ -165,19 +161,17 @@
       if (!q) { return true; }
       return [a.name, a.code, a.hazard, cname(a.country), a.country].join(" ").toLowerCase().indexOf(q) >= 0;
     });
-    shown = PAGE;
     appealTable();
   }
 
   function appealTable() {
     var head = "<thead><tr><th scope='col'>Started</th><th scope='col'>Appeal</th><th scope='col'>Type</th><th scope='col'>Country</th><th scope='col'>Requested</th><th scope='col'>Funded</th><th scope='col'>People</th><th scope='col'>Ends</th></tr></thead>";
-    document.getElementById("appeals").innerHTML = head + "<tbody>" + filtered.slice(0, shown).map(function (a) {
+    document.getElementById("appeals").innerHTML = head + "<tbody>" + filtered.map(function (a) {
       return '<tr id="' + esc(a.id) + '"><td>' + esc(day(a.start_date)) + "</td><td>" + link(a.url, a.name) + ' <span class="muted small">' + esc(a.code) + "</span></td><td>" +
         esc(a.appeal_type) + "</td><td>" + esc(cname(a.country)) + "</td><td>" + esc(chf(a.amount_requested_chf)) + "</td><td>" + esc(pct(a.funded_share)) + "</td><td>" +
         esc(a.people_targeted ? num(a.people_targeted) : "–") + "</td><td>" + esc(day(a.end_date)) + (a.past_end_date ? ' <span class="badge badge-warn">passed</span>' : "") + "</td></tr>";
     }).join("") + "</tbody>";
     document.getElementById("f-count").textContent = filtered.length + " of " + appeals.length;
-    document.getElementById("more").hidden = shown >= filtered.length;
   }
 
   function lanes() {
@@ -205,8 +199,6 @@
     plans = S.items.filter(function (i) { return i.lane === "hapi"; });
     disasters = S.items.filter(function (i) { return i.lane === "reliefweb" && i.record === "disaster"; });
     ["f-type", "f-q", "f-past"].forEach(function (id) { document.getElementById(id).addEventListener("input", applyFilters); });
-    document.getElementById("more").addEventListener("click", function () { shown += PAGE; appealTable(); });
-    document.getElementById("fu-more").addEventListener("click", function () { fuAll = true; funding(); });
     if (T && T.mountSettings) { T.mountSettings(document.getElementById("time-settings")); }
     if (T && T.onChange) { T.onChange(render); }
     render();
