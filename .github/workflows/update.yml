@@ -10,7 +10,9 @@ name: update
 # cached, committed or published (neither publisher allows bulk reposting).
 #
 # Secrets: CLOUDFLARE_PAGES_TOKEN (Cloudflare Pages: Edit) and repo variable CLOUDFLARE_ACCOUNT_ID. Without them
-# everything runs except the deploy. No source needs a key.
+# everything runs except the deploy. HDX_HAPI_APP_IDENTIFIER and RELIEFWEB_APPNAME (added 18 Nov 2026) go to the
+# collect step for the hapi and reliefweb lanes, and to both checks, whose terms scan fails the build if either
+# value reaches the published files. A lane whose key is missing fails on its own and keeps its last good copy.
 #
 # PROJECT below is the Pages project name; change it when Tom names the program.
 on:
@@ -53,10 +55,16 @@ jobs:
         if: steps.state.outputs.cache-matched-key == ''
         run: echo "::warning::No snapshot in the Actions cache, so a lane that fails this run has no last good copy."
       - name: Live collection (a failed lane keeps its last good copy and says so on the page)
+        env:
+          HDX_HAPI_APP_IDENTIFIER: ${{ secrets.HDX_HAPI_APP_IDENTIFIER }}
+          RELIEFWEB_APPNAME: ${{ secrets.RELIEFWEB_APPNAME }}
         run: python tools/relief.py collect
       - name: Build site/
         run: python tools/relief.py build
       - name: Check (registers, feed linter, terms scan)
+        env:
+          HDX_HAPI_APP_IDENTIFIER: ${{ secrets.HDX_HAPI_APP_IDENTIFIER }}
+          RELIEFWEB_APPNAME: ${{ secrets.RELIEFWEB_APPNAME }}
         run: python tools/relief.py check
       - name: History (history/, and site/data/ended.geojson)
         run: |
@@ -77,6 +85,9 @@ jobs:
           done
           echo "::warning::history not committed this run; the next run logs these changes again from the last state"
       - name: Check again, now with site/data/ended.geojson in the terms scan
+        env:
+          HDX_HAPI_APP_IDENTIFIER: ${{ secrets.HDX_HAPI_APP_IDENTIFIER }}
+          RELIEFWEB_APPNAME: ${{ secrets.RELIEFWEB_APPNAME }}
         run: python tools/relief.py check
       - name: Keep this run's snapshot for the next run
         uses: actions/cache/save@v6

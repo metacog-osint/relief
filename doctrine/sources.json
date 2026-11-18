@@ -1,6 +1,6 @@
 {
   "program": "relief",
-  "version": "0.1",
+  "version": "0.2",
   "sources": [
     {
       "id": "ifrc-go-appeals",
@@ -22,30 +22,59 @@
     },
     {
       "id": "hdx-hapi",
-      "name": "OCHA HDX HAPI: humanitarian needs, funding, food security and displacement by admin-1 (a planned lane; linked only until it is built)",
+      "name": "HDX HAPI (hapi.humdata.org/api/v2): coordination-context/funding (OCHA FTS) and metadata/resource; the app identifier is sent as a header",
       "url": "https://hapi.humdata.org",
-      "licence": "HAPI terms name no data licence; HDX licences are set per dataset and read per record",
-      "use": "link"
+      "licence": "HAPI terms of service (docs.humdata.org, read 18 Nov 2026) set no data licence of their own: limits are 10,000 rows a call and about one call a second; each HDX dataset's licence governs onward sharing (HDX terms of service, clauses 11 and 12). Funding dataset global-requirements-and-funding-data: CC BY-IGO 3.0, read from HDX's catalogue every run; rows are published only when their dataset's licence is open",
+      "use": "ingest",
+      "grade": "A2",
+      "independence_group": "ocha-fts"
     },
     {
-      "id": "ipc-api",
-      "name": "IPC food insecurity phases (API token by request) (a planned lane; linked only until it is built)",
-      "url": "https://www.ipcinfo.org/",
-      "licence": "not yet read",
-      "use": "link"
+      "id": "hdx-hapi-needs",
+      "name": "HDX HAPI affected-people/humanitarian-needs (OCHA HPC, Humanitarian Needs Overviews), country totals only",
+      "url": "https://data.humdata.org/dataset/global-hpc-hno",
+      "licence": "CC BY-IGO 3.0 (HDX dataset global-hpc-hno, read every run from HDX's catalogue)",
+      "use": "ingest",
+      "grade": "A2",
+      "independence_group": "ocha-hpc"
+    },
+    {
+      "id": "hdx-catalogue",
+      "name": "HDX catalogue (data.humdata.org/api/3/action/package_show): each HAPI dataset's licence, read every run",
+      "url": "https://data.humdata.org",
+      "licence": "Metadata only; nothing from it is published but the licence name. If it cannot be read, the licence recorded on 18 Nov 2026 is used and the lane says so",
+      "use": "ingest",
+      "grade": "A2",
+      "independence_group": "ocha-hdx"
     },
     {
       "id": "reliefweb-api",
-      "name": "ReliefWeb reports and disasters (pre-approved appname needed) (a planned lane; linked only until it is built)",
+      "name": "ReliefWeb API (api.reliefweb.int/v2): disasters marked ongoing or alert, and report counts by main country and by disaster (facets); the pre-approved appname is a query parameter added at request time and never recorded",
       "url": "https://apidoc.reliefweb.int/",
-      "licence": "per report; not yet read",
-      "use": "link"
+      "licence": "ReliefWeb terms and conditions (reliefweb.int/terms-conditions, read 18 Nov 2026; the API docs say they govern the API): personal, non-commercial use, with no right to redistribute, compile or create derivative works; materials may belong to their original sources. API limits: 1,000 calls a day and 1,000 entries a call per appname. Published: counts, ids (ReliefWeb id, GLIDE), types, countries, status, dates and links only; never ReliefWeb's disaster names or descriptions, or any report's title or text",
+      "use": "ingest",
+      "grade": "A2",
+      "independence_group": "reliefweb"
+    },
+    {
+      "id": "ipc-api",
+      "name": "IPC food insecurity phases: the IPC API (token by request) and HAPI's food-security endpoint (HDX dataset global-acute-food-insecurity-country-data)",
+      "url": "https://www.ipcinfo.org/",
+      "licence": "Conflict, read 18 Nov 2026: HDX lists the dataset as public domain (CC0), while IPC's own API terms of use (v2.0, March 2023) give CC BY-NC-SA 3.0 IGO and forbid any use for military purposes. Held: no IPC figure is read or published until Tom decides on IPC's terms",
+      "use": "excluded"
+    },
+    {
+      "id": "acled-via-hapi",
+      "name": "HAPI coordination-context/conflict-events (ACLED)",
+      "url": "https://acleddata.com/terms-of-use/",
+      "licence": "ACLED's own terms of use and attribution policy (HDX licence Other); not read: conflict events are Watchfloor's ground",
+      "use": "excluded"
     },
     {
       "id": "iom-dtm",
       "name": "IOM Displacement Tracking Matrix",
       "url": "https://dtm.iom.int/terms-and-conditions",
-      "licence": "Terms forbid redistribution and derivative works: link only",
+      "licence": "Terms forbid redistribution and derivative works: link only. HAPI's idps endpoint carries DTM data under the same terms (HDX dataset global-iom-dtm-from-api, licence Other, read 18 Nov 2026), so it is not read",
       "use": "link"
     }
   ]

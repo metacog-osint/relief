@@ -20,10 +20,17 @@
   function day(d) { return d ? String(d).slice(0, 10) : ""; }
   function num(n) { return Number(n || 0).toLocaleString("en-US"); }
   function chf(n) { return "CHF " + Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 }); }
+  function usd(n) {
+    n = Number(n || 0);
+    if (n >= 1e9) { return "USD " + (n / 1e9).toFixed(2) + " bn"; }
+    if (n >= 1e6) { return "USD " + (n / 1e6).toFixed(1) + " m"; }
+    return "USD " + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  }
+  function change(x) { return x === null || x === undefined ? "" : (x >= 0 ? "+" : "") + Math.round(x * 100) + "%"; }
   function pct(x) { return x === null || x === undefined ? "–" : Math.round(x * 100) + "%"; }
   function link(url, label) { return '<a href="' + esc(url) + '" rel="noopener">' + esc(label) + "</a>"; }
 
-  var S, NAMES, appeals = [], notices = [], filtered = [], shown = PAGE, fuAll = false;
+  var S, NAMES, appeals = [], notices = [], plans = [], disasters = [], filtered = [], shown = PAGE, fuAll = false;
   function cname(c) { return NAMES[c] || c; }
 
   // "Current": IFRC marks it Active and its end date has not passed. IFRC keeps many appeals Active long after
@@ -41,7 +48,12 @@
       ["Started in the last 90 days", num(recent)],
       ["Current Emergency Appeals funded", pct(req ? fund / req : null) + " of " + chf(req)],
       ["Marked active but past their end date", num(past)],
-      ["WHO notices, last 12 months", num(notices.length)]
+      ["WHO notices, last 12 months", num(notices.length)],
+      ["UN-coordinated plans this year funded", (function () {
+        var r = 0, f = 0; plans.forEach(function (p) { r += p.requirements_usd || 0; f += p.funding_usd || 0; });
+        return pct(r ? f / r : null) + " of " + usd(r);
+      })()],
+      ["Disasters ReliefWeb tracks now", num(disasters.length)]
     ].map(function (t) { return '<div class="tile"><span class="k">' + esc(t[0]) + '</span><span class="v">' + esc(t[1]) + "</span></div>"; }).join("");
   }
 
@@ -95,6 +107,55 @@
     }).join("") + "</tbody>";
   }
 
+  function planTable() {
+    var head = "<thead><tr><th scope='col'>Country</th><th scope='col'>Plan</th><th scope='col'>Required</th><th scope='col'>Funded</th><th scope='col'>Last year's plan funded</th><th scope='col'>People in need</th><th scope='col'>Change on last year's plan</th></tr></thead>";
+    document.getElementById("plans").innerHTML = plans.length ? head + "<tbody>" + plans.map(function (p) {
+      var n = p.needs, pp = p.prior_year_plan;
+      var ch = n && n.people_in_need_change !== null && n.people_in_need_change !== undefined ? n.people_in_need_change : null;
+      // RL-IND-3 (Tom, 18 Nov 2026), as in relief/feed.py: at least 25% more people in need than last year's plan.
+      var hit = n && n.people_in_need !== null && n.people_in_need_prior_year && n.people_in_need >= n.people_in_need_prior_year * 1.25;
+      return '<tr id="' + esc(p.id) + '"><td>' + esc(cname(p.country)) + "</td><td>" + esc(p.appeal_name || p.appeal_code) +
+        ' <span class="muted small">' + esc(p.appeal_type) + "</span></td><td>" + esc(usd(p.requirements_usd)) + "</td><td>" + esc(pct(p.funded_share)) +
+        "</td><td>" + esc(pp ? pct(pp.funded_share) : "–") + "</td><td>" + esc(n && n.people_in_need !== null ? num(n.people_in_need) : "–") + "</td><td>" +
+        (ch === null ? '<span class="muted">–</span>' : (hit ? '<span class="badge badge-warn">unusual, ' : "<span>") + esc(change(ch)) + "</span>") + "</td></tr>";
+    }).join("") + "</tbody>" : "<tbody><tr><td class='muted'>No plan read yet.</td></tr></tbody>";
+    // RL-ASM-1's test: UN plans where the IFRC has no current appeal.
+    var ifrcCountries = {};
+    appeals.forEach(function (a) { if (!a.past_end_date) { ifrcCountries[a.country] = true; } });
+    var gap = {};
+    plans.forEach(function (p) { if (!ifrcCountries[p.country]) { gap[p.country] = true; } });
+    var g = Object.keys(gap).map(cname).sort();
+    document.getElementById("plan-gap").textContent = g.length ?
+      "Countries with a UN-coordinated plan this year and no current IFRC appeal (" + g.length + "): " + g.join(", ") + "." : "";
+  }
+
+  function rwTables() {
+    var cap = 3;
+    function where(ccs) {
+      var names = (ccs || []).map(cname);
+      return names.length <= cap ? names.join(", ") : names.slice(0, cap).join(", ") + " and " + (names.length - cap) + " more";
+    }
+    // RL-IND-4 (Tom, 18 Nov 2026), as in relief/feed.py: at least 10 reports in 7 days and under 1% at the own mean.
+    function hit(r) { return r && r.reports_last_7_days >= 10 && r.tail_probability < 0.01; }
+    function cnt(r) {
+      return (hit(r) ? '<span class="badge badge-warn">unusual, ' : "<span>") + esc(r.reports_last_7_days) + "</span>" +
+        ' <span class="muted small">avg ' + esc(r.mean_per_week.toFixed(1)) + "/week</span>";
+    }
+    var head = "<thead><tr><th scope='col'>Event date</th><th scope='col'>Type</th><th scope='col'>Countries</th><th scope='col'>GLIDE</th><th scope='col'>Status</th><th scope='col'>Reports, last 7 days</th></tr></thead>";
+    var list = disasters.slice().sort(function (x, y) { return y.reports.reports_last_7_days - x.reports.reports_last_7_days || (y.event_day || "").localeCompare(x.event_day || ""); });
+    document.getElementById("rw").innerHTML = head + "<tbody>" + list.map(function (d) {
+      return '<tr id="' + esc(d.id) + '"><td>' + esc(day(d.event_day)) + "</td><td>" + link(d.url, d.hazard || "disaster") + "</td><td>" + esc(where(d.countries)) +
+        '</td><td class="small">' + esc(d.glide || "–") + "</td><td>" + esc(d.status) + "</td><td>" + cnt(d.reports) + "</td></tr>";
+    }).join("") + "</tbody>";
+    var rc = ((S.extra || {}).reliefweb || {}).countries || [];
+    rc = rc.slice().sort(function (x, y) { return x.tail_probability - y.tail_probability || y.reports_last_7_days - x.reports_last_7_days; }).filter(function (c) { return c.reports_last_7_days > 0; });
+    var h2 = "<thead><tr><th scope='col'>Country</th><th scope='col'>Reports, last 7 days</th><th scope='col'>Chance of this many</th></tr></thead>";
+    document.getElementById("rwc").innerHTML = rc.length ? h2 + "<tbody>" + rc.slice(0, 15).map(function (c) {
+      var p = c.tail_probability;
+      return "<tr><td>" + esc(cname(c.country)) + "</td><td>" + cnt(c) + "</td><td>" + esc(p < 0.001 ? "under 0.1%" : (p * 100).toFixed(1) + "%") + "</td></tr>";
+    }).join("") + "</tbody>" : "<tbody><tr><td class='muted'>No counts read yet.</td></tr></tbody>";
+  }
+
   function applyFilters() {
     var t = document.getElementById("f-type").value, q = document.getElementById("f-q").value.trim().toLowerCase();
     var hidePast = document.getElementById("f-past").checked;
@@ -120,7 +181,7 @@
   }
 
   function lanes() {
-    var label = { ifrc: "IFRC GO appeals", who: "WHO Disease Outbreak News" };
+    var label = { ifrc: "IFRC GO appeals", who: "WHO Disease Outbreak News", hapi: "HDX HAPI (OCHA FTS funding, OCHA HPC needs)", reliefweb: "ReliefWeb disasters and report counts" };
     document.getElementById("lanes").innerHTML = "<ul class='small'>" + Object.keys(S.lanes).map(function (k) {
       var l = S.lanes[k];
       var st = l.status === "ok" ? "read " + when(l.fetched_at) + ", " + num(l.items) + " items" :
@@ -130,7 +191,7 @@
   }
 
   function render() {
-    tiles(); unusual(); funding(); whoTable(); applyFilters(); lanes();
+    tiles(); unusual(); funding(); whoTable(); planTable(); rwTables(); applyFilters(); lanes();
     document.getElementById("asof").textContent = "Collected " + when(S.generated_at) + " · method " + S.method_version;
     if (location.hash) { var el = document.getElementById(location.hash.slice(1)); if (el) { el.scrollIntoView(); } }
   }
@@ -141,6 +202,8 @@
     S.recent_from = g.toISOString().slice(0, 10);
     appeals = S.items.filter(function (i) { return i.lane === "ifrc"; });
     notices = S.items.filter(function (i) { return i.lane === "who"; });
+    plans = S.items.filter(function (i) { return i.lane === "hapi"; });
+    disasters = S.items.filter(function (i) { return i.lane === "reliefweb" && i.record === "disaster"; });
     ["f-type", "f-q", "f-past"].forEach(function (id) { document.getElementById(id).addEventListener("input", applyFilters); });
     document.getElementById("more").addEventListener("click", function () { shown += PAGE; appealTable(); });
     document.getElementById("fu-more").addEventListener("click", function () { fuAll = true; funding(); });

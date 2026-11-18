@@ -1,18 +1,56 @@
 {
   "program": "relief",
-  "version": "0.2",
-  "note": "Thresholds set by Tom, 16 Nov 2026: an item that meets one is tier anomaly with a baseline_ref (relief/feed.py rule(); check recomputes it). No warning problem yet, so no item carries an indicator_id (the contract would then need a hypothesis); the indicator is named in the item's summary and baseline_ref id.",
+  "version": "0.3",
+  "note": "Thresholds set by Tom (RL-IND-1 and 2 on 16 Nov 2026, RL-IND-3 and 4 on 18 Nov 2026): an item that meets one is tier anomaly with a baseline_ref (relief/feed.py rule(); check recomputes it). No warning problem yet, so no item carries an indicator_id (the contract would then need a hypothesis); the indicator is named in the item's summary and baseline_ref id.",
   "warning_problems": [],
   "indicators": [
-    {"id": "RL-IND-1",
-     "text": "A country has more IFRC appeals starting in the last 90 days than its own ten-year rate makes likely.",
-     "series": "ifrc_appeals_per_country_90d",
-     "rule": "set 16 Nov 2026 (Tom): an appeal that started in the last 90 days, in a country whose count in those 90 days is at least 2 and whose Poisson tail probability of at least that count, at the country's mean per 90 days over the ten years before the window, is below 0.01",
-     "gentry": {"predictive": false, "diagnostic": true, "unambiguous": true, "collectable": true}},
-    {"id": "RL-IND-2",
-     "text": "WHO publishes an outbreak notice naming a country it has not named in the two years before.",
-     "series": "who_don_notices_per_country",
-     "rule": "set 16 Nov 2026 (Tom): prior_notices_730_days is 0 for a country in the notice (only when WHO's read reaches back the whole 730 days)",
-     "gentry": {"predictive": true, "diagnostic": false, "unambiguous": true, "collectable": true}}
+    {
+      "id": "RL-IND-1",
+      "text": "A country has more IFRC appeals starting in the last 90 days than its own ten-year rate makes likely.",
+      "series": "ifrc_appeals_per_country_90d",
+      "rule": "set 16 Nov 2026 (Tom): an appeal that started in the last 90 days, in a country whose count in those 90 days is at least 2 and whose Poisson tail probability of at least that count, at the country's mean per 90 days over the ten years before the window, is below 0.01",
+      "gentry": {
+        "predictive": false,
+        "diagnostic": true,
+        "unambiguous": true,
+        "collectable": true
+      }
+    },
+    {
+      "id": "RL-IND-2",
+      "text": "WHO publishes an outbreak notice naming a country it has not named in the two years before.",
+      "series": "who_don_notices_per_country",
+      "rule": "set 16 Nov 2026 (Tom): prior_notices_730_days is 0 for a country in the notice (only when WHO's read reaches back the whole 730 days)",
+      "gentry": {
+        "predictive": true,
+        "diagnostic": false,
+        "unambiguous": true,
+        "collectable": true
+      }
+    },
+    {
+      "id": "RL-IND-3",
+      "text": "A country's UN-coordinated plan counts far more people in need than last year's plan for that country.",
+      "series": "hdx_hapi_humanitarian_needs",
+      "rule": "set 18 Nov 2026 (Tom): the intersectoral people in need in the country's current plan (OCHA HPC via HDX HAPI) is at least 25% above the figure in its plan for the year before",
+      "gentry": {
+        "predictive": false,
+        "diagnostic": true,
+        "unambiguous": true,
+        "collectable": true
+      }
+    },
+    {
+      "id": "RL-IND-4",
+      "text": "ReliefWeb posts far more reports on a disaster, or on a country, in a week than its own recent record makes likely.",
+      "series": "reliefweb_report_counts",
+      "rule": "set 18 Nov 2026 (Tom): at least 10 ReliefWeb reports in the last 7 days on the disaster (or with the country as main country), and a Poisson tail probability of at least that many below 0.01 at its mean per week over the 12 weeks before",
+      "gentry": {
+        "predictive": true,
+        "diagnostic": false,
+        "unambiguous": true,
+        "collectable": true
+      }
+    }
   ]
 }

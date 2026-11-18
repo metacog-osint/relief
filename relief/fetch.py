@@ -13,6 +13,7 @@ import gzip
 import hashlib
 import json
 import os
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,15 +34,19 @@ def get(url: str, timeout: int = 60, headers: dict | None = None) -> bytes:
 
 
 def fetch(source_id: str, url: str, raw_dir: Path | None, ext: str, timeout: int = 60, getter=None,
-          gz: bool = False, headers: dict | None = None) -> tuple[bytes, dict]:
+          gz: bool = False, headers: dict | None = None, secret_query: dict | None = None) -> tuple[bytes, dict]:
     """Return (bytes, record). The record carries the URL, SHA-256, size and fetch time.
 
-    headers (for example an Authorization header) are passed to the request only; they are never
-    recorded. gz stores the raw copy gzipped; the hash and size are of the bytes as fetched."""
+    headers (for example an Authorization header) and secret_query (for example ReliefWeb's appname) are added to
+    the request only; they are never recorded, so the record's URL is the one without them. A test getter gets
+    that URL too. gz stores the raw copy gzipped; the hash and size are of the bytes as fetched."""
     if getter is not None:
         body = getter(url, timeout)
     else:
-        body = get(url, timeout, headers)
+        full = url
+        if secret_query:
+            full += ("&" if "?" in url else "?") + urllib.parse.urlencode(secret_query)
+        body = get(full, timeout, headers)
     sha = hashlib.sha256(body).hexdigest()
     rec = {"source_id": source_id, "url": url, "sha256": sha, "bytes": len(body), "fetched_at": now_utc()}
     if raw_dir is not None:
