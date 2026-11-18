@@ -80,6 +80,8 @@ body {
 .foot { padding: 24px 0; border-top: 1px solid var(--border); margin-top: 24px; }
 main a { color: var(--link); text-decoration: none; }
 main a:hover, main a:focus { text-decoration: underline; }
+/* Links inside running text are underlined, so colour is not the only sign (WCAG 1.4.1, axe link-in-text-block). */
+.prose p a, .prose td a { text-decoration: underline; }
 .scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 0.86rem; font-variant-numeric: tabular-nums; }
 th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
@@ -115,7 +117,6 @@ blockquote { margin: 6px 0 8px; padding: 6px 10px; border-left: 3px solid var(--
 dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 6px 0; }
 dl.facts dt { color: var(--muted); }
 dl.facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-.more-btn { margin-top: 10px; font: inherit; font-size: 0.88rem; color: var(--link); background: none; border: 1px solid var(--border); border-radius: 4px; padding: 6px 12px; cursor: pointer; }
 .prose h3 { font-size: 0.98rem; margin: 16px 0 4px; }
 .prose p, .prose ol { max-width: 860px; }
 .oprow { padding: 8px 0; border-bottom: 1px solid var(--border); }

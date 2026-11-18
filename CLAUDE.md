@@ -5,6 +5,11 @@ Tom, 15 Nov 2026: "Yes, start it" as its own program, not a Temper tab; named **
 id `relief`, item prefix `RL`, feed `tic-feed/2`, method `relief-0.3` (HAPI and ReliefWeb lanes, 18 Nov 2026). Groundwork:
 `_ideas/drafts/2026-10-31-humanitarian-step7.md`. Planned address `relief.theintelligence.company` (`feed.SITE`).
 
+**Page layout (18 Nov 2026):** the hub's `tic-tabs.js` sections row (Unusual, Appeals, Outbreaks, Plans, Disasters,
+Method) and `tic-fold.js` 1.0, the first site to use it: long tables and the funding bars show their first rows
+and "Show all N" (`data-tic-fold`; find box on WHO, plans and ReliefWeb). Every appeal row is drawn; the fold
+replaced the old 50-row "Show more". COP's `#<item id>` links open the row's group and fold.
+
 ## State, 18 Nov 2026: HAPI and ReliefWeb lanes built locally (relief-0.3), not yet pushed
 
 - Tom, 18 Nov: "Yes, as proposed" to the scope below, RL-IND-3 and RL-IND-4 included. Built and checked locally:
@@ -56,11 +61,6 @@ id `relief`, item prefix `RL`, feed `tic-feed/2`, method `relief-0.3` (HAPI and 
   (checked: Relief card "Beta", Updated line, house bar v2.1, CSP allows Relief). Tom says he added `relief` to the
   `tic-dispatch` token; the first dispatched start (08:00 UTC 16 Nov) shows whether it took (a `workflow_dispatch`
   run in Relief's run list). Relief's own cron, 17 past every 6th hour, is the fallback.
-- **Dispatch check, 16 Nov 15:20 UTC: the token did not take.** No `workflow_dispatch` run in Relief's list at
-  08:00 or 14:00 UTC, while the live `tic-dispatch` code has Relief's job and started Undertow (same hours, :30) at
-  08:30 and 14:30. So `DISPATCH_TOKEN` lacks Relief's repository access; Tom told once. No scheduled run had fired
-  either since 07:02 UTC, so the live feed sat at 07:02 with the IFRC lane marked failing (one 502 at 07:02; a local
-  collect at 15:20 read IFRC fine, 367). Worktree `_wt/cop-relief` was already gone; `_wt/hub-relief` (merged) removed.
 - 16 Nov about 12:30 AM CST another session rewrote this repo's GitHub history (same content, new shas, plus its kit
   0.5.8 sync). The pre-rewrite local history is kept as branch `backup/pre-remote-rewrite-2026-11-16`.
 - Live collect 16 Nov 2026 about 02:55 UTC: IFRC 366 appeals marked active (161 current, 205 past their end date),
