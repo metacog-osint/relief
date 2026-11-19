@@ -107,3 +107,24 @@ jobs:
           fi
           npx --yes wrangler@4.151.3 pages deploy site --project-name "$PROJECT" --branch main \
             --commit-hash "$GITHUB_SHA" --commit-message "update $GITHUB_SHA" --commit-dirty=true
+      # Private archive (19 Nov 2026, retention rule: no data lost). WHO's and ReliefWeb's terms bar redistribution,
+      # and HAPI returns current values only, so the raw replies of all four lanes (IFRC, WHO DON, HAPI, ReliefWeb)
+      # go to the PRIVATE repo metacog-osint/tic-archive as release assets (tools/tic_archive.py, release
+      # relief-raw-YYYY-MM: a snapshot per run, only changed replies uploaded). Never to this public repo's releases,
+      # artifacts or logs. ReliefWeb echoes the appname in href/links: it (and the HAPI identifier, if a reply ever
+      # echoes it) is replaced by REDACTED first, and the snapshot marks each changed file.
+      # After the deploy, so a failure turns the run red but never holds the live site. Token: TIC_ARCHIVE_TOKEN,
+      # contents:write on tic-archive only.
+      - name: Private archive (raw replies, to tic-archive)
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ secrets.TIC_ARCHIVE_TOKEN }}
+          RELIEFWEB_APPNAME: ${{ secrets.RELIEFWEB_APPNAME }}
+          HDX_HAPI_APP_IDENTIFIER: ${{ secrets.HDX_HAPI_APP_IDENTIFIER }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::secret TIC_ARCHIVE_TOKEN is not set, so nothing went to the private archive"; exit 1
+          fi
+          python tools/tic_archive.py put --program relief --lane raw --src data/raw \
+            --redact-env-if-set RELIEFWEB_APPNAME --redact-param appname \
+            --redact-env-if-set HDX_HAPI_APP_IDENTIFIER --redact-param app_identifier
