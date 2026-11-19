@@ -1,6 +1,6 @@
 name: update
-# Written 16 Nov 2026, modelled on Undertow's; NOT live: no repo, Pages project or secrets exist yet (each needs
-# Tom's yes). Every 6 hours (to be started by the hub's tic-dispatch Worker, because GitHub fires schedules 4-9 h
+# Written 16 Nov 2026, modelled on Undertow's; live since 15 Nov 2026 (repo, Pages project and secrets exist).
+# Every 6 hours (to be started by the hub's tic-dispatch Worker, because GitHub fires schedules 4-9 h
 # late; its own cron is the fallback), on every push to main, and by hand: the tests, the last run's snapshot from
 # the Actions cache, a live collection, the build and check, the history log, then a deploy of site/ to Cloudflare
 # Pages.
@@ -70,6 +70,9 @@ jobs:
         run: |
           git fetch -q --depth=1 origin main && git checkout -q FETCH_HEAD -- history 2>/dev/null \
             || echo "::warning::could not take history/ from main's tip; using this checkout's"
+          # Retention archives (history/appeals, who-notices, funding, reliefweb-counts .jsonl): append-only,
+          # written on top of main's tip just taken, then committed below with the rest of history/.
+          python tools/relief.py archive || echo "::warning::archive step failed; this run is missing from the archives"
           python doctrine/kit/tic.py history site/data/feed.geojson --dir history --ended site/data/ended.geojson \
             || { echo "::warning::history step failed; this run is missing from history/"; exit 0; }
           git config user.name "relief-bot"

@@ -56,6 +56,19 @@ def record(v: dict) -> dict:
     }
 
 
+def all_records(values: list[dict]) -> list[dict]:
+    """Every notice read, de-duplicated on id, with no age cut (the retention archive keeps them all)."""
+    seen, out = set(), []
+    for v in values:
+        if not (v.get("DonId") or v.get("Id")):
+            continue
+        r = record(v)
+        if r["key"] not in seen:
+            seen.add(r["key"])
+            out.append(r)
+    return sorted(out, key=lambda r: r["key"])
+
+
 def build(values: list[dict], today: date) -> tuple[list[dict], dict]:
     recs = [record(v) for v in values if v.get("DonId") or v.get("Id")]
     seen, uniq = set(), []

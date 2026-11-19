@@ -119,6 +119,16 @@ def place_context(history: list[dict], today: date) -> dict[str, dict]:
     return out
 
 
+def all_records(active: list[dict], history: list[dict]) -> list[dict]:
+    """Every appeal read, de-duplicated on appeal id (the set `build` starts from), for the retention archive."""
+    by_id: dict[str, dict] = {}
+    for a in active + history:
+        r = record(a)
+        if r is not None:
+            by_id.setdefault(r["appeal_id"], r)
+    return sorted(by_id.values(), key=lambda r: r["appeal_id"])
+
+
 def build(active: list[dict], history: list[dict], today: date) -> tuple[list[dict], dict]:
     """(published records, extra). Records are de-duplicated on appeal id."""
     by_id: dict[str, dict] = {}

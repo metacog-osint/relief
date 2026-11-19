@@ -4,6 +4,7 @@
     python tools/relief.py collect --only who    # one or more lanes; the rest keep their last copy
     python tools/relief.py build                 # build site/ from data/snapshot.json
     python tools/relief.py check                 # registers, feed linter, terms scan
+    python tools/relief.py archive               # append what the live view drops to history/*.jsonl
 
 collect never falls back to made-up data. A lane that fails keeps its last good copy (from_previous) or stays
 empty, and the snapshot's "lanes" block says which. The hapi and reliefweb lanes need their keys in the environment
@@ -26,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "doctrine" / "kit" / "python"))
 
-from relief import feed, fetch, hapi, ifrc, reliefweb, who_don  # noqa: E402
+from relief import archive, feed, fetch, hapi, ifrc, reliefweb, who_don  # noqa: E402
 from tic_doctrine import contract, registers  # noqa: E402
 from tic_doctrine.lint import check_header  # noqa: E402
 
@@ -73,7 +74,7 @@ def _lane_ifrc(raw_dir, now, getter, keys):
     if n_active < 50:
         raise ValueError(f"only {n_active} active appeals: GO's reply looks wrong")
     records, extra = ifrc.build(active, history, today)
-    return {"records": records, "extra": extra}, r1 + r2
+    return {"records": records, "extra": extra, "archive": ifrc.all_records(active, history)}, r1 + r2
 
 
 def _lane_who(raw_dir, now, getter, keys):
@@ -89,7 +90,7 @@ def _lane_who(raw_dir, now, getter, keys):
     if len(values) < 50:
         raise ValueError(f"WHO DON read only {len(values)} notices")
     records, extra = who_don.build(values, _today(now))
-    return {"records": records, "extra": extra}, recs
+    return {"records": records, "extra": extra, "archive": who_don.all_records(values)}, recs
 
 
 def _hapi_pages(url_t, raw_dir, getter, headers, **fmt):
@@ -177,7 +178,7 @@ def collect(root: Path = ROOT, getter=None, only: list[str] | None = None, now: 
     prev = json.loads(snap_path.read_text(encoding="utf-8")) if snap_path.exists() else {}
     now = now or fetch.now_utc()
     keys = dict(os.environ) if keys is None else keys
-    snap = {"generated_at": now, "method_version": feed.METHOD, "lanes": {}, "records": {}, "extra": {}}
+    snap = {"generated_at": now, "method_version": feed.METHOD, "lanes": {}, "records": {}, "extra": {}, "archive": {}}
     for lane in LANES:
         prev_lane = (prev.get("lanes") or {}).get(lane) or {}
         keep = lambda: ((prev.get("records") or {}).get(lane, []), (prev.get("extra") or {}).get(lane, {}))  # noqa: E731
@@ -189,6 +190,7 @@ def collect(root: Path = ROOT, getter=None, only: list[str] | None = None, now: 
             result, recs = LANE_FN[lane](raw_dir, now, getter, keys)
             snap["records"][lane] = result["records"]
             snap["extra"][lane] = result["extra"]
+            snap["archive"][lane] = result.get("archive") or []
             snap["lanes"][lane] = {"status": "ok", "fetched_at": now, "from_previous": False,
                                    "items": len(result["records"]), "failures": 0,
                                    "fetches": [{k: r[k] for k in ("url", "sha256", "bytes")} for r in recs]}
@@ -356,6 +358,7 @@ def main(argv=None) -> int:
     c = sub.add_parser("collect")
     c.add_argument("--only", nargs="*", choices=LANES)
     sub.add_parser("build")
+    sub.add_parser("archive")
     sub.add_parser("check")
     args = ap.parse_args(argv)
     if args.cmd == "collect":
@@ -365,6 +368,11 @@ def main(argv=None) -> int:
             print(f"  {lane:9s} {st.get('status')} {st.get('items', '')}"
                   f"{' [last good copy]' if st.get('from_previous') else ''}{extra}")
         return 0 if any(s.get("status") == "ok" for s in snap["lanes"].values()) else 1
+    if args.cmd == "archive":
+        snap = json.loads((ROOT / "data" / "snapshot.json").read_text(encoding="utf-8"))
+        for name, k in archive.run(snap, ROOT / "history").items():
+            print(f"  history/{name}.jsonl: {k} new lines")
+        return 0
     if args.cmd == "build":
         print(f"Built site/ ({len(build_site(ROOT))} files).")
         return 0
