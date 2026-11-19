@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT / "doctrine" / "kit" / "python"))
 
 import importlib.util  # noqa: E402
 
-from relief import feed, hapi, ifrc, iso, places, reliefweb, who_don  # noqa: E402
+from relief import archive, feed, hapi, ifrc, iso, places, reliefweb, who_don  # noqa: E402
 
 # The CLI (tools/relief.py) shares its name with the package, so it is loaded by path, not by import.
 _spec = importlib.util.spec_from_file_location("relief_cli", ROOT / "tools" / "relief.py")
@@ -334,6 +334,84 @@ class Pipeline(unittest.TestCase):
     def test_ids_stable(self):
         self.assertEqual(feed.item_id("ifrc:8439"), feed.item_id("ifrc:8439"))
         self.assertTrue(feed.item_id("who:2026-DON626").startswith("RL-WHO-"))
+
+
+class Retention(unittest.TestCase):
+    """The append-only archives under history/ keep what the live view drops."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        for part in ("doctrine", "site_src"):
+            shutil.copytree(ROOT / part, self.tmp / part)
+        self.snap = cli.collect(self.tmp, getter=getter, now=NOW, keys=KEYS)
+        self.hist = self.tmp / "history"
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def lines(self, name):
+        p = self.hist / f"{name}.jsonl"
+        return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines()] if p.exists() else []
+
+    def test_past_end_and_closed_appeals_archived(self):
+        archive.run(self.snap, self.hist)
+        ids = {r["id"] for r in self.lines("appeals")}
+        published = {r["appeal_id"] for r in self.snap["records"]["ifrc"]}
+        past_end = {r["appeal_id"] for r in self.snap["records"]["ifrc"] if r.get("past_end_date")}
+        self.assertTrue(past_end, "fixture has past-end appeals")
+        self.assertTrue(past_end <= ids)
+        self.assertTrue(published <= ids)
+        self.assertEqual(len(ids), len(self.snap["archive"]["ifrc"]))
+        self.assertGreaterEqual(len(ids), len(published))
+
+    def test_old_who_notices_archived_without_body(self):
+        archive.run(self.snap, self.hist)
+        rows = self.lines("who-notices")
+        self.assertGreater(len(rows), len(self.snap["records"]["who"]))
+        self.assertEqual(len({r["id"] for r in rows}), len(rows))
+        txt = (self.hist / "who-notices.jsonl").read_text(encoding="utf-8")
+        for f in cli.WHO_BODY_FIELDS:
+            self.assertNotIn(f'"{f}"', txt)
+
+    def test_funding_and_weekly_counts(self):
+        n = archive.run(self.snap, self.hist)
+        self.assertEqual(n["funding"], len(self.snap["records"]["hapi"]))
+        self.assertEqual(len(self.lines("reliefweb-counts")), 1)
+        row = self.lines("reliefweb-counts")[0]["record"]
+        self.assertTrue(row["countries"] and "description" not in json.dumps(row))
+        txt = "".join((self.hist / f"{x}.jsonl").read_text(encoding="utf-8")
+                      for x in ("appeals", "who-notices", "funding", "reliefweb-counts"))
+        for k in ("appname=", "app_identifier="):
+            self.assertNotIn(k, txt)
+
+    def test_second_run_writes_nothing_and_change_appends(self):
+        archive.run(self.snap, self.hist)
+        before = {x: (self.hist / f"{x}.jsonl").read_bytes() for x in
+                  ("appeals", "who-notices", "funding", "reliefweb-counts")}
+        again = archive.run(self.snap, self.hist)
+        self.assertEqual(again, {"appeals": 0, "who-notices": 0, "funding": 0, "reliefweb-counts": 0})
+        for x, b in before.items():
+            self.assertEqual((self.hist / f"{x}.jsonl").read_bytes(), b)
+        # one appeal's funded amount moves, one plan's funding moves: one new line each, old lines untouched
+        self.snap["archive"]["ifrc"][0]["amount_funded_chf"] += 1000
+        self.snap["records"]["hapi"][0]["funding_usd"] += 5
+        self.snap["generated_at"] = "2026-11-16T08:00:00Z"
+        n = archive.run(self.snap, self.hist)
+        self.assertEqual((n["appeals"], n["funding"], n["who-notices"], n["reliefweb-counts"]), (1, 1, 0, 0))
+        for x in ("appeals", "funding"):
+            self.assertTrue((self.hist / f"{x}.jsonl").read_bytes().startswith(before[x]))
+
+    def test_failed_lane_adds_nothing(self):
+        failed = cli.collect(self.tmp, getter=failing, now="2026-11-16T08:00:00Z", keys=KEYS)
+        n = archive.run(failed, self.tmp / "h2")
+        self.assertEqual(sum(n.values()), 0)
+
+    def test_live_outputs_unchanged(self):
+        cli.build_site(self.tmp)
+        self.assertNotIn("archive", json.loads((self.tmp / "site" / "data" / "snapshot.json").read_text(encoding="utf-8")))
+        self.assertEqual(cli.check_all(self.tmp), [])
+        doc = json.loads((self.tmp / "site" / "data" / "feed.geojson").read_text(encoding="utf-8"))
+        self.assertTrue(all(not f["properties"].get("past_end_date") for f in doc["features"]))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,110 @@
+"""Retention archives: append-only jsonl files under history/ that keep what the live view drops.
+
+    history/appeals.jsonl           every IFRC appeal Relief reads (past-end, closed, baseline), new or changed
+    history/who-notices.jsonl       every WHO DON notice read (id, title, place, date, link: no body text)
+    history/funding.jsonl           HAPI plan funding and needs, when a value changes
+    history/reliefweb-counts.jsonl  ReliefWeb report counts per country and disaster, once per ISO week
+
+Lines are only ever appended. A row is written when its id is new or its content hash differs from the id's last
+line; an unchanged row writes nothing, so a repeated run adds no lines. The live feed and site are not touched.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+from datetime import datetime
+from pathlib import Path
+
+# Fields that are derived from today's date or from other records, not seen at the source.
+DERIVED = ("past_end_date", "place_context", "prior_notices_730_days", "prior_year_plan")
+
+
+def content(rec: dict) -> dict:
+    return {k: v for k, v in rec.items() if k not in DERIVED}
+
+
+def digest(obj) -> str:
+    return hashlib.sha256(json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+                          ).hexdigest()[:16]
+
+
+def last_hashes(path: Path) -> dict[str, str]:
+    out: dict[str, str] = {}
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                row = json.loads(line)
+                out[row["id"]] = row["hash"]
+    return out
+
+
+def append_changed(path: Path, rows: list[tuple[str, dict]], seen_at: str) -> int:
+    """Append (id, content) rows that are new or changed. Returns the number of lines written."""
+    seen = last_hashes(path)
+    lines = []
+    for rid, body in rows:
+        h = digest(body)
+        if seen.get(rid) == h:
+            continue
+        seen[rid] = h
+        lines.append(json.dumps({"id": rid, "seen_at": seen_at, "hash": h, "record": body},
+                                sort_keys=True, ensure_ascii=False, separators=(",", ":")))
+    if lines:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8", newline="\n") as f:
+            f.write("\n".join(lines) + "\n")
+    return len(lines)
+
+
+def funding_body(r: dict) -> dict:
+    n = r.get("needs") or {}
+    src = r.get("funding_source") or {}
+    return {"appeal_code": r["appeal_code"], "appeal_name": r.get("appeal_name"), "appeal_type": r.get("appeal_type"),
+            "country": r["country"], "year": r.get("year"), "period_start": r.get("period_start"),
+            "period_end": r.get("period_end"), "requirements_usd": r.get("requirements_usd"),
+            "funding_usd": r.get("funding_usd"), "funded_share": r.get("funded_share"),
+            "people_in_need": n.get("people_in_need"), "people_targeted": n.get("people_targeted"),
+            "needs_year": n.get("year"), "dataset": src.get("dataset"), "licence_id": src.get("licence_id")}
+
+
+def counts_row(snap: dict) -> dict | None:
+    rw = (snap.get("extra") or {}).get("reliefweb") or {}
+    if not rw.get("countries"):
+        return None
+    t = datetime.fromisoformat(snap["generated_at"].replace("Z", "+00:00"))
+    y, w, _ = t.isocalendar()
+    dis = [{"disaster_id": r["disaster_id"], "reports_last_7_days": (r.get("reports") or {}).get("reports_last_7_days"),
+            "reports_in_baseline": (r.get("reports") or {}).get("reports_in_baseline")}
+           for r in (snap.get("records") or {}).get("reliefweb", []) if r.get("record") == "disaster"]
+    ctr = [{"country": c["country"], "reports_last_7_days": c["reports_last_7_days"],
+            "reports_in_baseline": c["reports_in_baseline"]} for c in rw["countries"]]
+    return {"id": f"{y}-W{w:02d}", "window": rw.get("window"), "baseline_weeks": 12, "countries": ctr,
+            "disasters": dis}
+
+
+def run(snap: dict, hist_dir: Path) -> dict[str, int]:
+    """Write all four archives from a collected snapshot. A lane that did not read fresh this run adds nothing."""
+    now = snap["generated_at"]
+    arc = snap.get("archive") or {}
+
+    def fresh(lane):
+        return (snap.get("lanes") or {}).get(lane, {}).get("status") == "ok"
+
+    n = {"appeals": 0, "who-notices": 0, "funding": 0, "reliefweb-counts": 0}
+    if fresh("ifrc"):
+        rows = [(r["appeal_id"], content(r)) for r in arc.get("ifrc") or []]
+        n["appeals"] = append_changed(hist_dir / "appeals.jsonl", rows, now)
+    if fresh("who"):
+        rows = [(r["key"], content(r)) for r in arc.get("who") or []]
+        n["who-notices"] = append_changed(hist_dir / "who-notices.jsonl", rows, now)
+    if fresh("hapi"):
+        rows = [(f"{r['appeal_code']}:{r['country']}:{r.get('year')}", funding_body(r))
+                for r in (snap.get("records") or {}).get("hapi", [])]
+        n["funding"] = append_changed(hist_dir / "funding.jsonl", rows, now)
+    if fresh("reliefweb"):
+        row = counts_row(snap)
+        p = hist_dir / "reliefweb-counts.jsonl"
+        if row and row["id"] not in last_hashes(p):
+            body = {k: v for k, v in row.items() if k != "id"}
+            n["reliefweb-counts"] = append_changed(p, [(row["id"], body)], now)
+    return n
