@@ -10,64 +10,12 @@ Method) and `tic-fold.js` 1.0, the first site to use it: long tables and the fun
 and "Show all N" (`data-tic-fold`; find box on WHO, plans and ReliefWeb). Every appeal row is drawn; the fold
 replaced the old 50-row "Show more". COP's `#<item id>` links open the row's group and fold.
 
-## State, 18 Nov 2026: HAPI and ReliefWeb lanes built locally (relief-0.3), not yet pushed
+## State, 19 Nov 2026: live, relief-0.3 (HAPI and ReliefWeb lanes) shipped
 
-- Tom, 18 Nov: "Yes, as proposed" to the scope below, RL-IND-3 and RL-IND-4 included. Built and checked locally:
-  live collect IFRC 367, WHO 43, HAPI 46 plan rows (32 plans, 30 countries, 20 with needs), ReliefWeb 85
-  disasters plus 1 country item; feed 338 items, 9 anomaly (Mozambique RL-IND-3 +80%; Rwanda RL-IND-4, 11 reports
-  against 1.5 a week); check PASS; 25 tests pass with no keys in the environment. Page checked in the browser pane
-  at 375 and 1280 px: no sideways scroll, no console errors.
-- Terms read 18 Nov (sources in `doctrine/sources.json`): HAPI's terms set no data licence; per HDX dataset, FTS
-  funding and HPC needs are CC BY-IGO 3.0; IOM DTM (idps) forbids redistribution; ACLED has its own terms; HDX
-  lists IPC's dataset as CC0 while IPC's own terms are CC BY-NC-SA 3.0 IGO with a no-military-use clause, so IPC is
-  held for Tom. ReliefWeb's terms: personal non-commercial use, no redistribution or compilation, so counts, ids,
-  dates and links only. The API docs say the site terms govern the API; limits 1,000 calls a day and 1,000
-  entries a call.
-- ReliefWeb echoes the appname in each reply's top-level `href` and `links`. The raw copies in `data/raw/`
-  (git-ignored, never cached) therefore hold it; `tests/make_fixtures.py` drops those fields and refuses to write a
-  fixture holding a key value. 18 Nov: Claude's own diagnostic printed the first 12 characters of the appname into
-  a local tool output (cut before masking); it never left the machine. Mask before slicing.
-- HAPI's identifier goes in the `X-HDX-HAPI-APP-IDENTIFIER` header (checked 18 Nov: the header works, no
-  parameter gives 403), so no HAPI URL carries it.
-- COP reads the new items through its generic `RL-<LANE>-` rule (`tools/gate.py`); its routine label and the kit's
-  suite description still say "IFRC appeals and WHO outbreak notices" (follow-up in those repos).
-
-## State, 15 Nov 2026, about 10:45 PM CST: LIVE at https://relief.theintelligence.company/
-
-- Public repo `metacog-osint/relief` (Tom's yes, 15 Nov evening), first commit `7272cf3`, pushed by sha after a
-  privacy audit of the staged blobs and of a fresh mirror (`../_inventory/privacy-audit-2026-11-08/`). Hits were
-  only the expected ones: the house-bar files (`site_src/tic-*.js`, `tic-nav.css`) carry the hub's local path in
-  their headers, as on every public site, and the kit and house bar list the suite's programs. Keep absolute local
-  paths out of this file. Fork PR approval set to `all_external_contributors`.
-- The push ran `update.yml` (run 43798799602, success, 25 s): tests, live collect (IFRC 366, WHO 42), check PASS,
-  history commit `f5f84fe` by relief-bot; deploy skipped because the Cloudflare secrets were not set yet. Pull before committing here: the bot commits `history/` each run.
-- Pages project `relief` created 15 Nov about 10:00 PM CST with `wrangler pages project create relief
-  --production-branch main --force` (without `--force`, wrangler 4.151 tries the new Workers-hosted Pages and fails
-  on the Pages token's scope; `--force` is needed only at creation). Its address is **`relief-ad0.pages.dev`**
-  (`relief.pages.dev` is someone else's site, ReliefViz). Repo variable `CLOUDFLARE_ACCOUNT_ID` copied from
-  Undertow's (same, only account) and secret `CLOUDFLARE_PAGES_TOKEN` set by Tom. Run 43801627637 deployed:
-  `https://relief-ad0.pages.dev/` serves "Relief: appeals and outbreaks" with a 203-item feed. Custom domain
-  `relief.theintelligence.company` added to the project through the API (pending until DNS points at it).
-- Squarespace CNAME `relief` -> `relief-ad0.pages.dev` (Tom changed it about 10:30 PM CST; it first pointed at
-  `relief.pages.dev` from a wrong instruction of Claude's). 1.1.1.1 held the old answer (TTL 4 h) until purged with
-  `curl -X POST "https://one.one.one.one/api/v1/purge?domain=relief.theintelligence.company&type=CNAME"`; the Pages
-  domain went active 16 Nov 04:44 UTC. Checked: page 200 with valid TLS, title "Relief: appeals and outbreaks",
-  feed 203 items, CSP header present, no console errors. No hub or COP listing yet.
-- Suite wiring done 16 Nov 2026 about 12:50 AM CST (Tom: "Do the suite wiring"): tic-doctrine 0.5.9 (`relief`
-  live, family Society, prefix `RL-WP`, fresh 12 h, stale 36 h) synced here; house bar v2.1 (Relief in the Programs
-  menu, Human layer, beta) here, in COP and on the hub; COP layer pushed (`society` preset, earth brown `#8C510A`;
-  COP's snapshot carried all 203 items at 06:48 UTC); hub listing, OE drawing and tic-dispatch job (:00 past 02,
-  08, 14, 20 UTC) pushed, and the dispatch Worker redeployed. Tom deployed the hub site 16 Nov 06:58 UTC
-  (checked: Relief card "Beta", Updated line, house bar v2.1, CSP allows Relief). Tom says he added `relief` to the
-  `tic-dispatch` token; the first dispatched start (08:00 UTC 16 Nov) shows whether it took (a `workflow_dispatch`
-  run in Relief's run list). Relief's own cron, 17 past every 6th hour, is the fallback.
-- 16 Nov about 12:30 AM CST another session rewrote this repo's GitHub history (same content, new shas, plus its kit
-  0.5.8 sync). The pre-rewrite local history is kept as branch `backup/pre-remote-rewrite-2026-11-16`.
-- Live collect 16 Nov 2026 about 02:55 UTC: IFRC 366 appeals marked active (161 current, 205 past their end date),
-  1,324 in the ten-year baseline; WHO 200 notices read, 42 in the last 12 months, all 200 titles with a place
-  parsed. Feed 203 items, linter PASS, `check` PASS, 13 tests pass. Page checked in the browser pane at desktop and
-  phone width before the rename (no sideways scroll, no console errors from the page's own code).
-- Kit: tic-doctrine 0.5.7 vendored in `doctrine/kit/`.
+Current state is in `.claude/HANDOFF.md` (read on demand): what is live, the 15 and 18 Nov history, terms notes, and
+what is left. Live at https://relief.theintelligence.company/ (Pages project `relief`, address
+`relief-ad0.pages.dev`); `update.yml` runs on a 6-hourly schedule and on `tic-dispatch` starts, and the bot commits
+`history/` each run, so pull before committing.
 
 ## Commands
 
@@ -139,33 +87,6 @@ codes HAPI and ReliefWeb use to the contract's alpha-2 (all 239 kit countries re
   by a marker, and the two report-count replies, without ReliefWeb's `href`/`links` echo.
 - The page's CSP is `style-src 'self'`: set styles through the CSSOM (see the funding bars), never in markup.
 
-## Next (each needs Tom)
-0. Ship the HAPI and ReliefWeb lanes (commit + push, one yes), then check the run, the live feed and COP's next
-   build. Then the suite wording (COP routine label, kit programs.json description, hub card) in those repos.
-1. Dispatch token: done. Tom added Relief 16 Nov; dispatched runs every 6 h since 16 Nov 20:00 UTC (checked 18 Nov).
-2. Keys for the next lanes (16 Nov 2026):
-   - HDX HAPI: **set.** User env var and repo secret `HDX_HAPI_APP_IDENTIFIER` (Tom, 18:29 UTC; app name
-     `TIC-Relief`, Tom's chosen email). Made with `GET https://hapi.humdata.org/api/v2/encode_app_identifier`
-     (`application`, `email`; returns `encoded_app_identifier`, base64 of `application:email`, no account; API
-     0.9.15). Checked: `/api/v2/metadata/location` answers with it. The HAPI lane can be built.
-   - ReliefWeb: **approved** 18 Nov 01:55 UTC (ReliefWeb adjusted the name Tom sent to its naming standard; the
-     approved name is in ReliefWeb's email to Tom). Checked: `api.reliefweb.int/v2/reports` answers with it. **Set**
-     18 Nov 15:04 UTC as User env var and repo secret `RELIEFWEB_APPNAME`; keep the name itself out of this public
-     repo (and out of logged URLs). The ReliefWeb lane can be built.
-   - Building either lane: `update.yml` does not pass these secrets to `collect` yet (add them as step `env:`); a
-     lane without its key must fail as a lane (last good copy kept), never break the run; check its terms (HDX
-     dataset licences, ReliefWeb's terms) for free public non-commercial redistribution before publishing.
-   - IPC: not requested yet. `api.ipcinfo.org` answers 401 "API key required". Request through the "Request access
-     to the API" form on `ipcinfo.org/ipc-country-analysis/api/` (Cloudflare check; Tom's browser passes it). Terms
-     read 16 Nov from Tom's saved copy of `API_TermsofUse-March2023.pdf` (IPC-CH API Terms of Use v2.0, March 2023):
-     - Data licence **CC BY-NC-SA 3.0 IGO**: free public non-commercial redistribution allowed, so items need that
-       licence carried (ShareAlike) and the credit "IPC CC BY-NC-SA 3.0 IGO", the data's last-updated date and a link
-       to ipcinfo.org (plus cadreharmonise.org for Cadre Harmonisé data). Other commercial use needs IPC's consent.
-     - "The IPC and the CH reject and forbid any use of their data for military purposes" (section II, repeated in
-       IV.7); also "Do No Harm", and a caution on aggregating with other datasets. Tom's call how TIC's framing sits
-       with this; raised with him 16 Nov.
-     - Key confidential, non-transferable, one per implementation (Relief's workflow is one); use must match the
-       purpose stated on the request form, and a change of purpose must be reported. IPC may name the requesting
-       organisation and use its logo. Questions: ipc-tech-support@fao.org. API docs: docs.api.ipcinfo.org.
-     - HDX HAPI's food-security data comes from IPC, so the same terms likely travel with it; read HAPI's licence
-       fields per dataset before publishing IPC figures from either route.
+## Next
+See `.claude/HANDOFF.md`. Open: suite wording (COP routine label, kit `programs.json` entry, hub card) and IPC
+(held for Tom; the use-for-military-purposes clause in IPC's terms).
