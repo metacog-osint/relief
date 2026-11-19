@@ -27,5 +27,10 @@ and `RELIEFWEB_APPNAME` (ReliefWeb's pre-approved appname). Without one, that la
 Sources and terms: IFRC GO (non-commercial use with credit; the data bank is not redistributed), WHO (extracts
 for research with acknowledgement; no notice text is kept), OCHA FTS and HPC via HDX HAPI (CC BY-IGO 3.0, each
 dataset's licence read every run) and ReliefWeb (no redistribution: counts, ids, dates and links only). IPC
-food-security figures are not read while IPC's terms are under review. The feed's own text is CC BY 4.0; a licence for the
-code is not chosen yet. The vendored doctrine kit keeps its own licence (`doctrine/kit/LICENSE`).
+food-security figures are not read while IPC's terms are under review. The feed's own text is CC BY 4.0; the code's licence is below.
+
+## Licence
+
+Copyright © 2026 Thomas Brummer, The Intelligence Company. Relief's code is licensed under the GNU Affero General Public License
+v3.0 (`LICENSE`). Third-party and shared files keep their own licences, and data keeps its sources'
+terms; both are listed in `NOTICE`.
