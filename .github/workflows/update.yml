@@ -73,7 +73,7 @@ jobs:
           # Retention archives (history/appeals, who-notices, funding, reliefweb-counts .jsonl): append-only,
           # written on top of main's tip just taken, then committed below with the rest of history/.
           python tools/relief.py archive || echo "::warning::archive step failed; this run is missing from the archives"
-          python doctrine/kit/tic.py history site/data/feed.geojson --dir history --ended site/data/ended.geojson \
+          python doctrine/kit/tic.py history site/data/feed.geojson --dir history --ended site/data/ended.geojson --fill-last-change \
             || { echo "::warning::history step failed; this run is missing from history/"; exit 0; }
           git config user.name "relief-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
