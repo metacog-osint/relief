@@ -1,9 +1,9 @@
 # Relief
 
-Humanitarian response: roadmap step 7 and the top unbuilt slice in the suite's ideas file `_ideas/new-programs.md`, beside this folder (rank 2).
+Humanitarian response: roadmap step 7 and the top unbuilt slice in the suite's private planning notes (rank 2).
 Tom, 15 Nov 2026: "Yes, start it" as its own program, not a Temper tab; named **Relief** the same evening. Program
 id `relief`, item prefix `RL`, feed `tic-feed/2`, method `relief-0.3` (HAPI and ReliefWeb lanes, 18 Nov 2026). Groundwork:
-`_ideas/drafts/2026-10-31-humanitarian-step7.md`. Planned address `relief.theintelligence.company` (`feed.SITE`).
+the private planning notes. Planned address `relief.theintelligence.company` (`feed.SITE`).
 
 **Page layout (18 Nov 2026):** the hub's `tic-tabs.js` sections row (Unusual, Appeals, Outbreaks, Plans, Disasters,
 Method) and `tic-fold.js` 1.0, the first site to use it: long tables and the funding bars show their first rows
