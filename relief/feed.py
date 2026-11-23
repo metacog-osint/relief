@@ -24,7 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "doctrine" / "kit" / "python"))
-from tic_doctrine import CONTRACT, geo  # noqa: E402
+from tic_doctrine import CONTRACT, __version__ as KIT_VERSION, geo  # noqa: E402
 
 from . import places  # noqa: E402
 
@@ -33,6 +33,7 @@ NAME = "Relief"  # Tom, 15 Nov 2026
 SITE = "https://relief.theintelligence.company"  # planned address; no DNS or Pages project yet
 METHOD = "relief-0.3"  # 0.2: RL-IND-1/2 set (Tom, 16 Nov 2026); 0.3: HAPI and ReliefWeb lanes, RL-IND-3/4 (18 Nov)
 LANGUAGE_KEY = "https://github.com/metacog-osint/tic-doctrine/blob/main/docs/language-key.md"
+CONTRACT_REV = "2.1"  # feed contract revision 2.1; last_change is filled by the kit's history step
 
 SOURCES = {
     "ifrc": {"id": "ifrc-go-appeals", "publisher": "International Federation of Red Cross and Red Crescent "
@@ -317,6 +318,51 @@ def _ordinal(n: int) -> str:
     return "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
 
 
+def _midnight(day: str | None) -> str | None:
+    return f"{day[:10]}T00:00:00Z" if day else None
+
+
+def event_times(r: dict) -> dict:
+    """Contract 2.1 event fields: when what the item describes began and ended, as its source dates it.
+
+    IFRC: the appeal's start and its scheduled end. WHO: the notice's date, because Relief keeps no notice text and
+    the title gives no onset. HAPI: the plan's period. ReliefWeb: the disaster's event date (its created date if it
+    has none), no end; a country item is the 7-day count window, to the second."""
+    lane = r["lane"]
+    if lane == "reliefweb" and r.get("record") == "country":
+        week = (r.get("window") or {}).get("week") or (None, None)
+        start, end = _utc(week[0]), _utc(week[1])
+        return {"event_start": start, "event_end": end} if start and end else {}
+    start, end = {"ifrc": (r.get("start_date"), r.get("end_date")),
+                  "who": (r.get("published_day"), None),
+                  "hapi": (r.get("period_start"), r.get("period_end")),
+                  "reliefweb": (r.get("event_day") or r.get("created_day"), None)}[lane]
+    if not start:
+        return {}
+    out = {"event_start": _midnight(start), "event_time_precision": "day"}
+    if end and end[:10] >= start[:10]:
+        out["event_end"] = _midnight(end)
+    return out
+
+
+def signal(lane: str, r: dict, hit: dict) -> dict:
+    """The one number an anomaly's tier rests on. Poisson tails stay in the item's own fields: `exceedance` is a
+    share of the subject's baseline readings, which these counts do not have."""
+    if hit["indicator"] == "RL-IND-1":
+        pc = r["place_context"]
+        return {"name": "ifrc_appeals_started_90d", "value": pc["appeals_last_90_days"], "unit": "appeals",
+                "expected": pc["mean_per_90_days"], "tail": "high"}
+    if hit["indicator"] == "RL-IND-2":
+        return {"name": "who_notices_naming_country_prior_730d", "value": 0, "unit": "notices", "tail": "low"}
+    if hit["indicator"] == "RL-IND-3":
+        n = r["needs"]
+        return {"name": "people_in_need", "value": n["people_in_need"], "unit": "people",
+                "expected": n["people_in_need_prior_year"], "tail": "high", "baseline_n": 1}
+    rp = r["reports"]
+    return {"name": "reliefweb_reports_7d", "value": rp["reports_last_7_days"], "unit": "reports",
+            "expected": rp["mean_per_week"], "tail": "high", "baseline_n": rp["baseline_weeks"]}
+
+
 def feature(r: dict, generated: str) -> dict:
     lane = r["lane"]
     src = dict(SOURCES[lane])
@@ -324,16 +370,18 @@ def feature(r: dict, generated: str) -> dict:
     iid = item_id(r["key"])
     hit = rule(lane, r, generated)
     common = {
-        "contract": CONTRACT, "id": iid, "program": PROGRAM, "kind": "observation",
+        "contract": CONTRACT, "id": iid, "subject_id": iid, "program": PROGRAM, "kind": "observation",
         "tier": "anomaly" if hit else "routine",
         "status": "actual", "msg_type": "new", "human_review": "none", "us_person_data": "none",
         "status_class": "reported", "product_category": "current", "published_at": generated,
         "pmesii_pt": ["social"], "ie_aspect": ["physical", "human"], "ascope": ["people", "events"],
         "requirement_ids": REQUIREMENT[lane], "method_version": METHOD,
         "visual": {"type": "page", "url": f"{SITE}/#{iid}"},
+        **event_times(r),
     }
     if hit:
         common["baseline_ref"] = hit["baseline_ref"]
+        common["signal"] = signal(lane, r, hit)
     if lane == "ifrc":
         src["title"] = f"{r['appeal_type']} {r['code']}: {r['name']}"
         props = {**common,
@@ -413,6 +461,9 @@ def feature(r: dict, generated: str) -> dict:
                  "notice": {k: r.get(k) for k in ("don_id", "disease", "place", "regions", "place_unread",
                                                   "prior_notices_730_days")}}
         geom = _geometry(r["countries"])
+    if props["data_as_of"] > generated:   # a source clock ahead of ours; contract 2.1: never after publication
+        props["data_as_of"] = generated
+        props.pop("data_as_of_precision", None)
     return {"type": "Feature", "geometry": geom, "properties": props}
 
 
@@ -462,6 +513,8 @@ def build_feed(records: list[dict], generated: str, health_record: dict | None =
     doc = {
         "type": "FeatureCollection",
         "contract": CONTRACT,
+        "contract_rev": CONTRACT_REV,
+        "kit": KIT_VERSION,
         "program": PROGRAM,
         "generated_at": generated,
         "method_version": METHOD,
