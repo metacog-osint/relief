@@ -62,7 +62,7 @@ Read on demand; `CLAUDE.md` holds the rules. Updated 19 Nov 2026.
 
 ## Now, 19 Nov 2026 (checked against git, Actions and the live site)
 
-- 15 Nov prompt (`_ideas/drafts/2026-11-15-relief-next-session.md`) is fully done: git repo, privacy audit, public repo, Pages and
+- 15 Nov prompt (the private planning notes) is fully done: git repo, privacy audit, public repo, Pages and
   DNS, suite wiring, thresholds RL-IND-1 to 4, HDX HAPI and ReliefWeb keys and lanes. Mark it replaced by this file.
 - Shipped since: relief-0.3 lanes (`315be6b`), sections row and folds (`bc6e0a1`), AGPL-3.0 licence and policy (PRs 1, 2),
   private raw archive R2 (PR 3; needs `TIC_ARCHIVE_TOKEN` per suite issue 53).
