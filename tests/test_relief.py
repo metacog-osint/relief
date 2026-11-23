@@ -331,6 +331,30 @@ class Pipeline(unittest.TestCase):
         self.assertTrue(all(r["published_day"] >= "2025-11-16" for r in recs))
         self.assertEqual(extra["places_parsed"], extra["places_stated"])
 
+    def test_contract_21_fields(self):
+        snap = self.run_once()
+        dis = snap["records"]["reliefweb"][0]
+        dis["reports"] = reliefweb.attention(30, 12)
+        cli.build_site(self.tmp, snapshot=snap)
+        doc = json.loads((self.tmp / "site" / "data" / "feed.geojson").read_text(encoding="utf-8"))
+        self.assertEqual(doc["contract_rev"], "2.1")
+        self.assertEqual(doc["kit"], feed.KIT_VERSION)
+        regs = registers.ids(self.tmp / "doctrine")
+        for f in doc["features"]:
+            p = f["properties"]
+            self.assertEqual(p["subject_id"], p["id"])
+            self.assertTrue(p.get("event_start"), p["id"])
+            if p["tier"] == "anomaly":
+                self.assertIsInstance(p["signal"]["value"], (int, float))
+            self.assertEqual([m for _, sev, m in contract.check(f, regs) if sev == "error"], [], p["id"])
+        records = snap["records"]["ifrc"]
+        today = feed.build_feed(records, "2026-11-16T08:00:00Z")
+        tomorrow = feed.build_feed(records, "2026-11-17T08:00:00Z")
+        self.assertEqual({f["properties"]["subject_id"] for f in today["features"]},
+                         {f["properties"]["subject_id"] for f in tomorrow["features"]})
+        for f in doc["features"]:
+            self.assertLessEqual(f["properties"]["data_as_of"], f["properties"]["published_at"])
+
     def test_ids_stable(self):
         self.assertEqual(feed.item_id("ifrc:8439"), feed.item_id("ifrc:8439"))
         self.assertTrue(feed.item_id("who:2026-DON626").startswith("RL-WHO-"))
