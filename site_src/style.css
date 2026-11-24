@@ -141,3 +141,8 @@ dl.facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
   .bar-row { grid-template-columns: 1fr max-content; }
   .bar-label { grid-column: 1 / -1; }
 }
+.terms { max-width: 72ch; margin: 0 0 16px; font-size: 14px; }
+.terms summary { cursor: pointer; padding: 6px 0; min-height: 24px; }
+.terms dl { margin: 4px 0 0; }
+.terms dt { font-weight: 600; margin-top: 8px; }
+.terms dd { margin: 2px 0 0 0; color: var(--muted); }
