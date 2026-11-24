@@ -77,7 +77,9 @@ codes HAPI and ReliefWeb use to the contract's alpha-2 (all 239 kit countries re
   scan fails on `appname=`, `app_identifier=`, either key's value when set, ReliefWeb text fields, IPC and DTM
   fields, and the ReliefWeb fixture marker; `update.yml` passes both secrets to the checks so the scan can look).
   IFRC GO: non-commercial, analyses allowed, no copying of the data bank (the ten-year read is counts
-  only). WHO: extracts for research with acknowledgement, no substantial reproduction: never keep or publish notice
+  only). Public `history/` keeps counts and links for it (`appeals-index.jsonl`: id, hash, link;
+  `appeals-counts.json`); the full records go only to the private archive (`tic-archive` lane `relief-appeals`,
+  written by the History step: `archive-full`, then `retire-legacy`). Never write appeal records under `history/`. WHO: extracts for research with acknowledgement, no substantial reproduction: never keep or publish notice
   body fields (`Overview`, `Epidemiology`, `Assessment`, `Advice`, `Response`, `FurtherInformation`, `Summary`).
   `check`'s terms scan fails the build on any of them, on WHO's `paraeid` markup, or on a URL outside the allowed
   publisher pages.

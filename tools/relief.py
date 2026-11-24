@@ -4,7 +4,11 @@
     python tools/relief.py collect --only who    # one or more lanes; the rest keep their last copy
     python tools/relief.py build                 # build site/ from data/snapshot.json
     python tools/relief.py check                 # registers, feed linter, terms scan
-    python tools/relief.py archive               # append what the live view drops to history/*.jsonl
+    python tools/relief.py archive               # append what the live view drops to history/ (public: for IFRC
+                                                 # appeals an index and counts only)
+    python tools/relief.py archive-full --dir D  # full appeal records into D/appeals.jsonl (restored from the private
+                                                 # archive, uploaded again by the workflow); never under history/
+    python tools/relief.py retire-legacy --dir D # remove the old public history/appeals.jsonl once D holds all of it
 
 collect never falls back to made-up data. A lane that fails keeps its last good copy (from_previous) or stays
 empty, and the snapshot's "lanes" block says which. The hapi and reliefweb lanes need their keys in the environment
@@ -351,6 +355,30 @@ def check_all(root: Path = ROOT) -> list[str]:
     return errs
 
 
+def private_appeals(cmd: str, private: Path, root: Path = ROOT) -> int:
+    """archive-full and retire-legacy: the full IFRC appeal records, kept outside every published folder. Prints
+    counts only (this repo's logs are public)."""
+    legacy = root / "history" / archive.APPEALS_FULL
+    private = private.resolve()
+    for public in (root / "history", root / "site", root / "site_src"):
+        if public.resolve() in [private, *private.parents]:
+            print(f"::error::--dir must not be under {public.name}/: the full records are never published")
+            return 1
+    if cmd == "archive-full":
+        snap = json.loads((root / "data" / "snapshot.json").read_text(encoding="utf-8"))
+        n = archive.run_full(snap, private, legacy)
+        print(f"  private appeals file: {n['appeals']} new lines, {n['legacy']} taken from the old public file")
+        return 0
+    try:
+        k = archive.retire_legacy(private, legacy)
+    except RuntimeError as exc:
+        print(f"::error::{exc}")
+        return 1
+    print(f"  old public history/{archive.APPEALS_FULL}: "
+          + (f"removed ({k} lines, all in the private copy)" if k else "not present"))
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Relief: IFRC appeals, WHO outbreak notices, UN plans (HDX HAPI) "
                                              "and ReliefWeb disasters.")
@@ -359,6 +387,9 @@ def main(argv=None) -> int:
     c.add_argument("--only", nargs="*", choices=LANES)
     sub.add_parser("build")
     sub.add_parser("archive")
+    for name in ("archive-full", "retire-legacy"):
+        s = sub.add_parser(name)
+        s.add_argument("--dir", required=True, help="folder holding the private appeals.jsonl")
     sub.add_parser("check")
     args = ap.parse_args(argv)
     if args.cmd == "collect":
@@ -371,8 +402,11 @@ def main(argv=None) -> int:
     if args.cmd == "archive":
         snap = json.loads((ROOT / "data" / "snapshot.json").read_text(encoding="utf-8"))
         for name, k in archive.run(snap, ROOT / "history").items():
-            print(f"  history/{name}.jsonl: {k} new lines")
+            shown = archive.APPEALS_INDEX if name == "appeals" else f"{name}.jsonl"
+            print(f"  history/{shown}: {k} new lines")
         return 0
+    if args.cmd in ("archive-full", "retire-legacy"):
+        return private_appeals(args.cmd, Path(args.dir))
     if args.cmd == "build":
         print(f"Built site/ ({len(build_site(ROOT))} files).")
         return 0
