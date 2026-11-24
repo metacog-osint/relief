@@ -379,7 +379,7 @@ class Retention(unittest.TestCase):
 
     def test_past_end_and_closed_appeals_archived(self):
         archive.run(self.snap, self.hist)
-        ids = {r["id"] for r in self.lines("appeals")}
+        ids = {r["id"] for r in self.lines("appeals-index")}
         published = {r["appeal_id"] for r in self.snap["records"]["ifrc"]}
         past_end = {r["appeal_id"] for r in self.snap["records"]["ifrc"] if r.get("past_end_date")}
         self.assertTrue(past_end, "fixture has past-end appeals")
@@ -404,14 +404,14 @@ class Retention(unittest.TestCase):
         row = self.lines("reliefweb-counts")[0]["record"]
         self.assertTrue(row["countries"] and "description" not in json.dumps(row))
         txt = "".join((self.hist / f"{x}.jsonl").read_text(encoding="utf-8")
-                      for x in ("appeals", "who-notices", "funding", "reliefweb-counts"))
+                      for x in ("appeals-index", "who-notices", "funding", "reliefweb-counts"))
         for k in ("appname=", "app_identifier="):
             self.assertNotIn(k, txt)
 
     def test_second_run_writes_nothing_and_change_appends(self):
         archive.run(self.snap, self.hist)
         before = {x: (self.hist / f"{x}.jsonl").read_bytes() for x in
-                  ("appeals", "who-notices", "funding", "reliefweb-counts")}
+                  ("appeals-index", "who-notices", "funding", "reliefweb-counts")}
         again = archive.run(self.snap, self.hist)
         self.assertEqual(again, {"appeals": 0, "who-notices": 0, "funding": 0, "reliefweb-counts": 0})
         for x, b in before.items():
@@ -422,8 +422,91 @@ class Retention(unittest.TestCase):
         self.snap["generated_at"] = "2026-11-16T08:00:00Z"
         n = archive.run(self.snap, self.hist)
         self.assertEqual((n["appeals"], n["funding"], n["who-notices"], n["reliefweb-counts"]), (1, 1, 0, 0))
-        for x in ("appeals", "funding"):
+        for x in ("appeals-index", "funding"):
             self.assertTrue((self.hist / f"{x}.jsonl").read_bytes().startswith(before[x]))
+
+    # --- IFRC appeals: counts and links in public, the records only in the private archive (24 Nov 2026) ---
+
+    def test_public_history_holds_no_appeal_record(self):
+        archive.run(self.snap, self.hist)
+        self.assertFalse((self.hist / "appeals.jsonl").exists())
+        rows = self.lines("appeals-index")
+        self.assertTrue(rows)
+        for r in rows:
+            self.assertEqual(set(r), {"id", "seen_at", "hash", "url"})
+            self.assertTrue(r["url"] is None or r["url"].startswith("https://go.ifrc.org/"))
+        counts = json.loads((self.hist / "appeals-counts.json").read_text(encoding="utf-8"))
+        self.assertEqual(counts["appeals"], len(self.snap["archive"]["ifrc"]))
+        self.assertEqual(sum(n for v in counts["by_country_start_year"].values() for n in v.values()), counts["appeals"])
+        public = "".join(p.read_text(encoding="utf-8") for p in self.hist.glob("appeals*"))
+        for field in ("amount_requested_chf", "amount_funded_chf", "people_targeted", "emergency_name", "code"):
+            self.assertNotIn(f'"{field}"', public)
+
+    def test_full_records_go_to_the_private_folder_with_the_old_format(self):
+        private = self.tmp / "private"
+        n = archive.run_full(self.snap, private)
+        self.assertEqual(n, {"legacy": 0, "appeals": len(self.snap["archive"]["ifrc"])})
+        rows = [json.loads(x) for x in (private / "appeals.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(set(rows[0]), {"id", "seen_at", "hash", "record"})
+        self.assertIn("amount_requested_chf", rows[0]["record"])
+        self.assertEqual(archive.run_full(self.snap, private), {"legacy": 0, "appeals": 0})
+        # the public index and the private file agree on every id and hash
+        archive.run(self.snap, self.hist)
+        self.assertEqual({(r["id"], r["hash"]) for r in rows}, {(r["id"], r["hash"]) for r in self.lines("appeals-index")})
+
+    def test_old_public_file_folded_in_then_removed_only_when_all_of_it_is_held(self):
+        # the old public file: this run's records as the old writer wrote them, plus an earlier version of one appeal
+        old_dir = self.tmp / "old"
+        archive.run_full(self.snap, old_dir)
+        legacy = self.hist / "appeals.jsonl"
+        self.hist.mkdir(parents=True, exist_ok=True)
+        first = json.loads((old_dir / "appeals.jsonl").read_text(encoding="utf-8").splitlines()[0])
+        earlier = json.dumps({**first, "hash": "0" * 16, "seen_at": "2026-11-01T00:00:00Z"}, sort_keys=True,
+                             ensure_ascii=False, separators=(",", ":"))
+        legacy.write_text(earlier + "\n" + (old_dir / "appeals.jsonl").read_text(encoding="utf-8"), encoding="utf-8",
+                          newline="\n")
+        want = legacy.read_text(encoding="utf-8").splitlines()
+        # the private copy starts as an older copy of the public file (as seeded on 24 Nov), two lines short
+        private = self.tmp / "private"
+        private.mkdir()
+        (private / "appeals.jsonl").write_text("\n".join(want[:-2]) + "\n", encoding="utf-8", newline="\n")
+        with self.assertRaises(RuntimeError):
+            archive.retire_legacy(private, legacy)
+        self.assertTrue(legacy.exists(), "kept while the private copy lacks lines")
+        n = archive.run_full(self.snap, private, legacy)
+        self.assertEqual(n, {"legacy": 2, "appeals": 0})
+        self.assertEqual((private / "appeals.jsonl").read_text(encoding="utf-8").splitlines(), want)
+        # the public index takes the old file's lines too, with their own seen_at
+        archive.run(self.snap, self.hist)
+        idx = self.lines("appeals-index")
+        self.assertEqual([(r["id"], r["hash"], r["seen_at"]) for r in idx],
+                         [(r["id"], r["hash"], r["seen_at"]) for r in map(json.loads, want)])
+        self.assertEqual(archive.retire_legacy(private, legacy), len(want))
+        self.assertFalse(legacy.exists())
+        self.assertEqual(archive.retire_legacy(private, legacy), 0)
+
+    def test_private_folder_is_never_a_published_one(self):
+        for bad in ("history/x", "site/data", "site_src"):
+            self.assertEqual(cli.private_appeals("retire-legacy", self.tmp / bad, self.tmp), 1)
+        self.assertEqual(cli.private_appeals("retire-legacy", self.tmp / "data" / "private" / "appeals", self.tmp), 0)
+
+    def test_committed_history_matches_the_rule(self):
+        # this repo's own history/: an index of the same shape, and no appeal record
+        rows = [json.loads(x) for x in (ROOT / "history" / "appeals-index.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertTrue(rows)
+        self.assertTrue(all(set(r) == {"id", "seen_at", "hash", "url"} for r in rows))
+
+    def test_workflow_uploads_before_it_removes(self):
+        wf = (ROOT / ".github" / "workflows" / "update.yml").read_text(encoding="utf-8")
+        step = wf[wf.index("- name: History (history/"):wf.index("- name: Check again")]
+        order = ["tic_archive.py restore --program relief --lane appeals", "relief.py archive-full",
+                 "tic_archive.py put --program relief --lane appeals", "relief.py retire-legacy", "git add history"]
+        at = [step.index(x) for x in order]
+        self.assertEqual(at, sorted(at))
+        self.assertIn("GH_TOKEN: ${{ secrets.TIC_ARCHIVE_TOKEN }}", step)
+        self.assertNotIn("--src history", wf)
+        last = wf[wf.index("- name: Private archive (raw replies, to tic-archive)"):]
+        self.assertIn("data/private/appeals-failed", last)
 
     def test_failed_lane_adds_nothing(self):
         failed = cli.collect(self.tmp, getter=failing, now="2026-11-16T08:00:00Z", keys=KEYS)

@@ -5,7 +5,8 @@ Read from the public GO API (goadmin.ifrc.org/api/v2/appeal/, no key). Two reads
   2. every appeal that started since BASELINE_START, for each country's own record.
 Published: active appeals, plus any appeal that started in the last RECENT_DAYS. The baseline reads are used for
 counts only and are never republished (GO's terms: non-commercial use, no copying of the data bank or a
-substantial part of it; maps, charts and analyses are allowed).
+substantial part of it; maps, charts and analyses are allowed). history/ keeps an index (id, hash, link) and counts;
+the full records go to the private archive only (archive.py).
 
 Amounts are in Swiss francs (CHF), as IFRC states appeals. A DREF allocation is normally funded in full on
 approval, so its funded share says little; an Emergency Appeal's funded share is the measure of response.

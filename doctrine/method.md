@@ -64,6 +64,8 @@ for that place against its own past, still a measurement.
 ## Terms
 - IFRC GO: non-commercial use such as research; maps, charts and analyses allowed; the data bank is not copied or
   redistributed. The ten-year read is used for counts only; only active and recent appeals are published.
+  The repository's history keeps, for each appeal read, its id, a hash of the record and IFRC's link, and counts per
+  country and start year; the records themselves are kept in a private archive, not here.
 - WHO: extracts for research with acknowledgement, not for commercial use; substantial portions need written
   permission. Only the title, date, place and link are published. The check fails the build if any notice body
   field reaches the site.

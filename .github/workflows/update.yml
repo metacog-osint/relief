@@ -7,7 +7,8 @@ name: update
 #
 # State: a failed lane keeps its last good copy, which needs the run before's data/snapshot.json. It holds only
 # derived records (no WHO notice text) and is kept in the Actions cache. The raw replies in data/raw/ are never
-# cached, committed or published (neither publisher allows bulk reposting).
+# cached, committed or published (neither publisher allows bulk reposting). The full IFRC appeal records (every
+# version, the ten-year read included) are kept only in the private archive; history/ holds an index and counts.
 #
 # Secrets: CLOUDFLARE_PAGES_TOKEN (Cloudflare Pages: Edit) and repo variable CLOUDFLARE_ACCOUNT_ID. Without them
 # everything runs except the deploy. HDX_HAPI_APP_IDENTIFIER and RELIEFWEB_APPNAME (added 18 Nov 2026) go to the
@@ -67,12 +68,33 @@ jobs:
           RELIEFWEB_APPNAME: ${{ secrets.RELIEFWEB_APPNAME }}
         run: python tools/relief.py check
       - name: History (history/, and site/data/ended.geojson)
+        env:
+          GH_TOKEN: ${{ secrets.TIC_ARCHIVE_TOKEN }}   # only for the private appeals copy below; git push does not use it
         run: |
           git fetch -q --depth=1 origin main && git checkout -q FETCH_HEAD -- history 2>/dev/null \
             || echo "::warning::could not take history/ from main's tip; using this checkout's"
-          # Retention archives (history/appeals, who-notices, funding, reliefweb-counts .jsonl): append-only,
-          # written on top of main's tip just taken, then committed below with the rest of history/.
+          # Retention archives (history/appeals-index, who-notices, funding, reliefweb-counts .jsonl, and
+          # appeals-counts.json): append-only, written on top of main's tip just taken, then committed below with the
+          # rest of history/. For IFRC appeals the public files are an index (id, hash, link) and counts only.
           python tools/relief.py archive || echo "::warning::archive step failed; this run is missing from the archives"
+          # Full IFRC appeal records (24 Nov 2026): never in this public repo. The one append-only file lives in the
+          # PRIVATE repo metacog-osint/tic-archive (lane relief-appeals): restored, appended to, uploaded again. The old
+          # public history/appeals.jsonl is folded in line for line and removed (retire-legacy) only after the upload
+          # succeeded, so the commit below drops it from main's tip; git history keeps its past versions. A failure
+          # here leaves the public file in place, never stops the deploy, and turns the run red in the last step.
+          rm -rf data/private && mkdir -p data/private/appeals
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::secret TIC_ARCHIVE_TOKEN is not set, so the full appeal records were not archived"
+            touch data/private/appeals-failed
+          elif python tools/tic_archive.py restore --program relief --lane appeals --dest data/private/appeals \
+            && python tools/relief.py archive-full --dir data/private/appeals \
+            && python tools/tic_archive.py put --program relief --lane appeals --src data/private/appeals \
+            && python tools/relief.py retire-legacy --dir data/private/appeals; then
+            echo "appeals: full records are in the private archive"
+          else
+            echo "::error::the full appeal records did not reach the private archive this run; the next run retries"
+            touch data/private/appeals-failed
+          fi
           python doctrine/kit/tic.py history site/data/feed.geojson --dir history --ended site/data/ended.geojson --fill-last-change \
             || { echo "::warning::history step failed; this run is missing from history/"; exit 0; }
           git config user.name "relief-bot"
@@ -128,3 +150,6 @@ jobs:
           python tools/tic_archive.py put --program relief --lane raw --src data/raw \
             --redact-env-if-set RELIEFWEB_APPNAME --redact-param appname \
             --redact-env-if-set HDX_HAPI_APP_IDENTIFIER --redact-param app_identifier
+          if [ -e data/private/appeals-failed ]; then
+            echo "::error::the full IFRC appeal records did not reach the private archive (see the History step)"; exit 1
+          fi
