@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="tic-nav.css">
 <link rel="stylesheet" href="tic-tabs.css">
 <link rel="stylesheet" href="tic-fold.css">
+<link rel="alternate" type="application/geo+json" title="Relief feed (GeoJSON)" href="data/feed.geojson">
 <script src="tic-time.js"></script>
 <script src="tic-nav.js" defer data-current="relief"></script>
 </head>
@@ -18,7 +19,6 @@
   <div class="wrap top-row">
     <div class="brand"><strong>Relief</strong><span class="muted">The Intelligence Company</span></div>
     <nav class="top-nav" aria-label="Data and method">
-      <a href="data/feed.geojson">Feed</a>
       <a href="#method">Method</a>
       <span id="time-settings"></span>
     </nav>
@@ -186,6 +186,9 @@
 <footer class="wrap foot small muted">
   <p>Relief, The Intelligence Company. Public information only, non-commercial. Not
     affiliated with the IFRC, WHO, OCHA or ReliefWeb.</p>
+  <nav class="tic-data" aria-label="Data and downloads"><span class="tic-data-k">Data and downloads</span>
+    <a href="data/feed.geojson">Feed (GeoJSON)</a>
+    <a href="https://github.com/metacog-osint/relief">Source code</a></nav>
 </footer>
 <script src="tic-tabs.js"></script>
 <script src="tic-fold.js"></script>
