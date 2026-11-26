@@ -51,6 +51,9 @@ def getter(url: str, timeout: int) -> bytes:
             return (FIX / "rw_disasters.json").read_bytes()
         frm = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["filter[value][from]"][0]
         return (FIX / ("rw_week.json" if frm == reliefweb.windows(NOW)["week"][0] else "rw_baseline.json")).read_bytes()
+    if "goadmin.ifrc.org/api/v2/event/" in url:
+        ev = url.split("/api/v2/event/")[1].split("/")[0]
+        return json.dumps(json.loads((FIX / "ifrc_events.json").read_text(encoding="utf-8"))[ev]).encode()
     if "goadmin.ifrc.org" in url:
         return (FIX / ("ifrc_active.json" if "status=0" in url else "ifrc_history.json")).read_bytes()
     if "who.int/api" in url:
@@ -433,11 +436,13 @@ class Retention(unittest.TestCase):
         rows = self.lines("appeals-index")
         self.assertTrue(rows)
         for r in rows:
-            self.assertEqual(set(r), {"id", "seen_at", "hash", "url"})
+            self.assertIn(set(r), ({"id", "seen_at", "hash", "url"}, {"id", "seen_at", "hash", "url", "regional"}))
+            self.assertIs(r.get("regional", True), True)
             self.assertTrue(r["url"] is None or r["url"].startswith("https://go.ifrc.org/"))
         counts = json.loads((self.hist / "appeals-counts.json").read_text(encoding="utf-8"))
         self.assertEqual(counts["appeals"], len(self.snap["archive"]["ifrc"]))
-        self.assertEqual(sum(n for v in counts["by_country_start_year"].values() for n in v.values()), counts["appeals"])
+        self.assertEqual(sum(n for k in ("by_country_start_year", "regional_by_recorded_country_start_year")
+                             for v in counts[k].values() for n in v.values()), counts["appeals"])
         public = "".join(p.read_text(encoding="utf-8") for p in self.hist.glob("appeals*"))
         for field in ("amount_requested_chf", "amount_funded_chf", "people_targeted", "emergency_name", "code"):
             self.assertNotIn(f'"{field}"', public)
@@ -494,7 +499,8 @@ class Retention(unittest.TestCase):
         # this repo's own history/: an index of the same shape, and no appeal record
         rows = [json.loads(x) for x in (ROOT / "history" / "appeals-index.jsonl").read_text(encoding="utf-8").splitlines()]
         self.assertTrue(rows)
-        self.assertTrue(all(set(r) == {"id", "seen_at", "hash", "url"} for r in rows))
+        self.assertTrue(all(set(r) - {"regional"} == {"id", "seen_at", "hash", "url"} and r.get("regional", True) is True
+                            for r in rows))
 
     def test_workflow_uploads_before_it_removes(self):
         wf = (ROOT / ".github" / "workflows" / "update.yml").read_text(encoding="utf-8")
@@ -519,6 +525,99 @@ class Retention(unittest.TestCase):
         self.assertEqual(cli.check_all(self.tmp), [])
         doc = json.loads((self.tmp / "site" / "data" / "feed.geojson").read_text(encoding="utf-8"))
         self.assertTrue(all(not f["properties"].get("past_end_date") for f in doc["features"]))
+
+
+class Regional(unittest.TestCase):
+    """Regional and global IFRC appeals: GO records each under one country, often where it is run from."""
+    # appeal id -> (code, the country GO records it under, the emergency's countries as GO lists them)
+    CASES = {"3542": ("MGR65002", "HU", ["UA"]),         # Ukraine and impacted countries crisis
+             "3732": ("MDRS1001", "KE", ["SD"]),         # Sudan Crisis Regional Population Movement
+             "4434": ("MDRS1007", "UG", ["CD", "UG"])}   # EVD Regional Appeal
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        for part in ("doctrine", "site_src"):
+            shutil.copytree(ROOT / part, self.tmp / part)
+        self.snap = cli.collect(self.tmp, getter=getter, now=NOW, keys=KEYS)
+        cli.build_site(self.tmp)
+        doc = json.loads((self.tmp / "site" / "data" / "feed.geojson").read_text(encoding="utf-8"))
+        self.items = {f["properties"]["appeal"]["appeal_id"]: f for f in doc["features"] if f["properties"].get("appeal")}
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_code_marks_regional(self):
+        for code in ("MGR65002", "MDRS1001", "MDRS1007", "MDR42005", "MDR65002", "MDRTIGRAY", "MSS00003"):
+            self.assertTrue(ifrc.is_regional(code), code)
+        for code in ("MDRKE075", "MDRMG024", "MGRLB001", "MDRUA001", None, ""):
+            self.assertFalse(ifrc.is_regional(code), code)
+
+    def test_three_appeals_placed_by_their_emergency(self):
+        for aid, (code, recorded, members) in self.CASES.items():
+            f = self.items[aid]
+            p = f["properties"]
+            self.assertEqual(p["appeal"]["code"], code)
+            self.assertTrue(p["appeal"]["regional"])
+            self.assertEqual(p["appeal"]["recorded_country"], recorded)
+            self.assertTrue(p["appeal"]["office"])
+            self.assertEqual(p["countries"], members)
+            self.assertIsNone(p["place_context"])
+            self.assertEqual(p["tier"], "routine")
+            self.assertTrue(p["summary"].startswith("IFRC launched a multi-country Emergency Appeal"))
+            self.assertNotIn(f"Emergency Appeal for {feed._name(recorded)}", p["summary"])  # noqa: SLF001
+            self.assertIn(f"records it under {feed._name(recorded)}", p["summary"])  # noqa: SLF001
+            pts = f["geometry"]["coordinates"]
+            self.assertEqual(1 if f["geometry"]["type"] == "Point" else len(pts), len(members))
+        hu = self.items["3542"]["properties"]
+        self.assertIn("GO lists the emergency's country as Ukraine.", hu["summary"])
+        self.assertNotIn("HU", hu["countries"])
+        # a country appeal is unchanged: placed in its own country
+        own = [f["properties"] for a, f in self.items.items() if a not in self.CASES]
+        self.assertTrue(own and all(not p["appeal"]["regional"] and "recorded_country" not in p["appeal"]
+                                    and len(p["countries"]) == 1 for p in own))
+        self.assertEqual(cli.check_all(self.tmp), [])
+
+    def test_one_read_per_emergency(self):
+        events = [f["url"] for f in self.snap["lanes"]["ifrc"]["fetches"] if "/api/v2/event/" in f["url"]]
+        self.assertEqual(sorted(events), sorted(ifrc.EVENT_URL.format(id=e) for e in ("5854", "6479", "7937")))
+        self.assertEqual(self.snap["extra"]["ifrc"]["emergencies_read"], 3)
+
+    def test_regional_appeals_leave_the_host_baseline(self):
+        today = date(2026, 11, 16)
+        hist = [{"country": "HU", "start_date": "2026-11-01", "regional": True},
+                {"country": "HU", "start_date": "2020-01-01", "regional": True},
+                {"country": "HU", "start_date": "2026-10-01"}]
+        ctx = ifrc.place_context(hist, today)["HU"]
+        self.assertEqual((ctx["appeals_last_90_days"], ctx["appeals_in_baseline"]), (1, 0))
+        self.assertNotIn("XX", ifrc.place_context([{"country": "XX", "start_date": "2026-11-01", "regional": True}],
+                                                  today))
+        # in the fixtures: Kenya's own count is its country appeals only, not the Sudan regional appeal
+        start = self.snap["extra"]["ifrc"]["baseline_start"]
+        ke = [r for r in self.snap["records"]["ifrc"] if r["country"] == "KE" and not r.get("regional")
+              and r.get("place_context")]
+        self.assertTrue(ke, "fixtures need a Kenya country appeal")
+        pc = ke[0]["place_context"]
+        own = {r["appeal_id"] for r in self.snap["archive"]["ifrc"]
+               if r["country"] == "KE" and not r.get("regional") and start <= (r["start_date"] or "") <= NOW[:10]}
+        self.assertEqual(pc["appeals_last_90_days"] + pc["appeals_in_baseline"], len(own))
+
+    def test_history_gains_the_flag_and_old_lines_stay(self):
+        hist = self.tmp / "history"
+        hist.mkdir()
+        old = archive.index_line("3542", "2026-11-19T03:33:58Z", "f5b67cb430d7c8cb", "https://go.ifrc.org/emergencies/5854")
+        (hist / "appeals-index.jsonl").write_text(old + "\n", encoding="utf-8", newline="\n")
+        archive.run(self.snap, hist)
+        lines = (hist / "appeals-index.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(lines[0], old)
+        self.assertNotIn("regional", json.loads(lines[0]))
+        rows = [json.loads(x) for x in lines[1:]]
+        flagged = {r["id"] for r in rows if r.get("regional")}
+        self.assertTrue(set(self.CASES) <= flagged)
+        self.assertEqual(flagged, {r["appeal_id"] for r in self.snap["archive"]["ifrc"] if r.get("regional")})
+        self.assertTrue(all("regional" not in r for r in rows if r["id"] not in flagged))
+        counts = json.loads((hist / "appeals-counts.json").read_text(encoding="utf-8"))
+        self.assertIn("2022", counts["regional_by_recorded_country_start_year"]["HU"])
+        self.assertNotIn("2022", counts["by_country_start_year"].get("HU", {}))
 
 
 if __name__ == "__main__":

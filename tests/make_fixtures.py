@@ -4,7 +4,8 @@
     python tests/make_fixtures.py --only hapi reliefweb # some lanes; the others' fixtures stay as they are
 
 The fixtures are cut down on purpose, because the repository may be public and neither publisher allows bulk
-reposting: 60 active and 120 baseline IFRC appeals (real records, `next` removed), and 60 WHO notices with every
+reposting: 60 active and 120 baseline IFRC appeals (real records, `next` removed), plus the three regional appeals
+the tests name (REGIONAL_CODES) and, for each, its GO emergency cut to id, name and countries; and 60 WHO notices with every
 body field replaced by a marker paragraph (titles, ids and dates are real). The marker keeps WHO's `paraeid`
 attribute so the terms scan has something to catch.
 
@@ -35,6 +36,24 @@ def latest(source_id: str, needle: str) -> bytes:
         raise SystemExit(f"no raw copy for {source_id} {needle}: run tools/relief.py collect first")
     sha = rows[-1]["sha256"][:12]
     return gzip.decompress((RAW / source_id / f"{sha}.json.gz").read_bytes())
+
+
+REGIONAL_CODES = ("MGR65002", "MDRS1001", "MDRS1007")   # Ukraine and impacted countries, Sudan, Ebola (BVD)
+
+
+def cut_event(doc: dict) -> dict:
+    """A GO emergency record cut to what Relief reads: its id, name and countries (code and name)."""
+    return {"id": doc["id"], "name": doc.get("name"),
+            "countries": [{"iso": c.get("iso"), "name": c.get("name")} for c in doc.get("countries") or []]}
+
+
+def ifrc_fixtures(active: dict, hist: dict, event) -> tuple[list, list, dict]:
+    """(active, baseline, emergencies) fixture contents. `event(id)` returns a GO emergency reply as a dict."""
+    a = active["results"][:60]
+    a += [x for x in active["results"][60:] if x.get("code") in REGIONAL_CODES]
+    h = hist["results"][:120]
+    evs = {str(x["event"]): cut_event(event(x["event"])) for x in a if x.get("code") in REGIONAL_CODES and x.get("event")}
+    return a, h, evs
 
 
 HAPI_COUNTRIES = {"MOZ", "MMR", "SDN", "PSE", "CHL", "AFG", "SSD", "YEM", "UKR", "COD"}
@@ -110,8 +129,8 @@ def main() -> None:
         return
     active = json.loads(latest("ifrc-go-appeals", "status=0"))
     hist = json.loads(latest("ifrc-go-appeals", "start_date__gte"))
-    a = active["results"][:60]
-    h = hist["results"][:120]
+    a, h, evs = ifrc_fixtures(active, hist, lambda ev: json.loads(latest("ifrc-go-appeals", f"/event/{ev}/")))
+    (OUT / "ifrc_events.json").write_text(json.dumps(evs, ensure_ascii=False), encoding="utf-8")
     (OUT / "ifrc_active.json").write_text(json.dumps({"count": len(a), "next": None, "results": a}), encoding="utf-8")
     (OUT / "ifrc_history.json").write_text(json.dumps({"count": len(h), "next": None, "results": h}), encoding="utf-8")
     who = json.loads(latest("who-don", "skip=0").decode("utf-8"))
