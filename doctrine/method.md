@@ -1,4 +1,4 @@
-# Method: Relief, relief-0.3
+# Method: Relief, relief-0.4
 
 ## What it measures
 Four publishers' own records, read each run from their public APIs (the last two with a key):
@@ -6,6 +6,13 @@ Four publishers' own records, read each run from their public APIs (the last two
 - **IFRC appeals** (IFRC GO). Every Emergency Appeal and DREF allocation the IFRC marks Active, plus any appeal
   that started in the last 90 days: hazard, country, amounts requested and funded (Swiss francs, as IFRC states
   them), people targeted, start and end dates, and a link to the IFRC emergency page.
+  **Regional and global appeals.** IFRC codes a country's appeal with a three-letter prefix, the country's
+  two-letter code and a number (MDRKE075). An appeal whose code has no country in it (MDRS1001, MGR65002,
+  MDRTIGRAY) is a regional or global appeal. GO still records one country for it, often where the appeal is run
+  from (the Ukraine and impacted countries appeal, MGR65002, is recorded under Hungary, home of IFRC's Europe
+  Regional Office), so that country is shown as "recorded under" and never as the place the appeal serves. The
+  item is placed in the countries GO's emergency record lists (read each run from GO's emergency record, one
+  read per regional appeal), with the office GO names.
 - **WHO outbreak notices** (Disease Outbreak News). Every notice WHO published in the last 365 days: the disease
   and place read from WHO's title, the countries and WHO regions named, the date and a link.
 
@@ -28,7 +35,8 @@ for that place against its own past, still a measurement.
 ## How unusual for this place
 - **Appeals.** For each country, the number of IFRC appeals that started in the last 90 days, against that
   country's own average per 90 days over the ten years before the window (`place_context`). The window's own
-  appeals never count toward the baseline. The Poisson tail probability of at least that many is published with
+  appeals never count toward the baseline, and regional and global appeals count toward no country's.
+  They have no `place_context`, so RL-IND-1 does not apply to them. The Poisson tail probability of at least that many is published with
   it. **RL-IND-1** (set 16 Nov 2026): an appeal that started in the last 90 days is tier anomaly when its
   country has at least 2 appeals in those 90 days and the tail probability is below 0.01. Older appeals in the
   same country stay routine: the count is about what started recently.
@@ -98,6 +106,10 @@ forbid redistribution).
 - relief-0.1 (16 Nov 2026): first slice, IFRC appeals and WHO Disease Outbreak News.
 - relief-0.2 (16 Nov 2026): thresholds for RL-IND-1 (p < 0.01, at least 2 appeals) and RL-IND-2 (first WHO
   notice for a country in two years) set by Tom; items that meet one are tier anomaly with a `baseline_ref`.
+- relief-0.4 (26 Nov 2026): regional and global IFRC appeals (code with no country in it) are flagged
+  (`appeal.regional`), placed in their GO emergency's countries instead of the country GO records them under
+  (kept as `appeal.recorded_country`, with `appeal.office`), and left out of every country's appeal baseline.
+  The history index marks their new lines `regional`; earlier lines are unchanged.
 - relief-0.3 (18 Nov 2026): HDX HAPI lane (OCHA FTS plans and funding, OCHA HPC people in need) and ReliefWeb lane
   (current disasters, report counts); RL-IND-3 (people in need at least 25% above last year's plan) and RL-IND-4
   (at least 10 ReliefWeb reports in 7 days, p < 0.01 at the own 12-week mean) set by Tom.

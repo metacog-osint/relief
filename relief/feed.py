@@ -31,7 +31,8 @@ from . import places  # noqa: E402
 PROGRAM = "relief"
 NAME = "Relief"  # Tom, 15 Nov 2026
 SITE = "https://relief.theintelligence.company"  # planned address; no DNS or Pages project yet
-METHOD = "relief-0.3"  # 0.2: RL-IND-1/2 set (Tom, 16 Nov 2026); 0.3: HAPI and ReliefWeb lanes, RL-IND-3/4 (18 Nov)
+METHOD = "relief-0.4"  # 0.2: RL-IND-1/2 (16 Nov 2026); 0.3: HAPI and ReliefWeb lanes, RL-IND-3/4 (18 Nov);
+#                        0.4: regional and global IFRC appeals placed by their emergency's countries (26 Nov)
 LANGUAGE_KEY = "https://github.com/metacog-osint/tic-doctrine/blob/main/docs/language-key.md"
 CONTRACT_REV = "2.1"  # feed contract revision 2.1; last_change is filled by the kit's history step
 
@@ -189,11 +190,30 @@ def _chf(x: float) -> str:
     return f"CHF {x:,.0f}"
 
 
+def ifrc_countries(r: dict) -> list[str]:
+    """The countries an appeal item is placed in: its own country, or for a regional or global appeal the
+    countries of its GO emergency (never the country GO records it under, unless the emergency lists it too)."""
+    return list(r.get("countries") or []) if r.get("regional") else [r["country"]]
+
+
 def ifrc_summary(r: dict, generated: str | None = None) -> str:
-    kind = {"DREF": "a DREF allocation", "Emergency Appeal": "an Emergency Appeal"}.get(r["appeal_type"],
-                                                                                       f"an appeal ({r['appeal_type']})")
-    bits = [f"IFRC launched {kind} for {_name(r['country'])}"
-            + (f" ({r['hazard']})" if r.get("hazard") else "") + f" on {_day_text(r['start_date'])}."]
+    if r.get("regional"):
+        kind = {"DREF": "a multi-country DREF allocation", "Emergency Appeal": "a multi-country Emergency Appeal"}.get(
+            r["appeal_type"], f"a multi-country appeal ({r['appeal_type']})")
+        ccs = ifrc_countries(r)
+        names = ", ".join(_name(c) for c in ccs)
+        office = f" ({r['office']})" if r.get("office") else ""
+        bits = [f"IFRC launched {kind}" + (f" ({r['hazard']})" if r.get("hazard") else "")
+                + f" on {_day_text(r['start_date'])}.",
+                (f"GO lists the emergency's {'country' if len(ccs) == 1 else 'countries'} as {names}."
+                 if ccs else "GO lists no country for the emergency."),
+                f"IFRC's code {r['code']} marks a regional or global appeal; GO records it under "
+                f"{_name(r['country'])}{office}, which is not counted as that country's appeal."]
+    else:
+        kind = {"DREF": "a DREF allocation", "Emergency Appeal": "an Emergency Appeal"}.get(
+            r["appeal_type"], f"an appeal ({r['appeal_type']})")
+        bits = [f"IFRC launched {kind} for {_name(r['country'])}"
+                + (f" ({r['hazard']})" if r.get("hazard") else "") + f" on {_day_text(r['start_date'])}."]
     money = f"{_chf(r['amount_requested_chf'])} requested"
     if r.get("funded_share") is not None:
         money += f", {_chf(r['amount_funded_chf'])} funded ({r['funded_share']:.0%})"
@@ -388,8 +408,8 @@ def feature(r: dict, generated: str) -> dict:
                  "title": f"{r['appeal_type']}: {r['name']}",
                  "summary": ifrc_summary(r, generated),
                  "data_as_of": _utc(r.get("updated_at")) or f"{r['start_date']}T00:00:00Z",
-                 "countries": [r["country"]],
-                 "precision_class": "country",
+                 "countries": ifrc_countries(r),
+                 "precision_class": "country" if ifrc_countries(r) else "none",
                  "coverage_fraction": 1.0,
                  "sources": [src],
                  "appeal": {k: r.get(k) for k in (
@@ -397,9 +417,13 @@ def feature(r: dict, generated: str) -> dict:
                      "past_end_date", "amount_requested_chf", "amount_funded_chf", "funded_share", "people_targeted",
                      "emergency_id", "emergency_name", "ifrc_severity", "region")},
                  "place_context": r.get("place_context")}
+        props["appeal"]["regional"] = bool(r.get("regional"))
+        if r.get("regional"):
+            props["appeal"]["recorded_country"] = r["country"]   # GO's country field, as given
+            props["appeal"]["office"] = r.get("office")
         if not _utc(r.get("updated_at")):
             props["data_as_of_precision"] = "day"
-        geom = _geometry([r["country"]])
+        geom = _geometry(ifrc_countries(r))
     elif lane == "hapi":
         fs = r.get("funding_source") or {}
         src.update({"title": f"FTS: {r['appeal_code']} {r['appeal_name']}", "url": r["url"]})

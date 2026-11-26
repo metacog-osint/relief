@@ -78,7 +78,16 @@ def _lane_ifrc(raw_dir, now, getter, keys):
     if n_active < 50:
         raise ValueError(f"only {n_active} active appeals: GO's reply looks wrong")
     records, extra = ifrc.build(active, history, today)
-    return {"records": records, "extra": extra, "archive": ifrc.all_records(active, history)}, r1 + r2
+    r3 = []
+
+    def read_event(ev_id):
+        body, rec = fetch.fetch("ifrc-go-appeals", ifrc.EVENT_URL.format(id=ev_id), raw_dir, "json", timeout=90,
+                                getter=getter, gz=True)
+        r3.append(rec)
+        return body
+
+    extra["emergencies_read"] = ifrc.add_countries(records, read_event)
+    return {"records": records, "extra": extra, "archive": ifrc.all_records(active, history)}, r1 + r2 + r3
 
 
 def _lane_who(raw_dir, now, getter, keys):
@@ -223,7 +232,7 @@ def page_data(snap: dict, records: list[dict], feed_doc: dict) -> dict:
         hit = feed.rule(r["lane"], r, snap["generated_at"])
         rows.append({"id": iid, **{k: v for k, v in r.items() if k != "key"}, "summary": summ,
                      "in_feed": not r.get("past_end_date"), "unusual": hit["indicator"] if hit else None})
-    ccs = sorted({c for r in records for c in ([r["country"]] if r.get("country") else r.get("countries") or [])}
+    ccs = sorted({c for r in records for c in ([r["country"]] if r.get("country") else []) + (r.get("countries") or [])}
                  | {c["country"] for c in ((snap.get("extra") or {}).get("reliefweb") or {}).get("countries") or []})
     return {"generated_at": snap["generated_at"], "method_version": snap["method_version"], "name": feed.NAME,
             "lanes": {k: {kk: vv for kk, vv in v.items() if kk != "fetches"} for k, v in snap["lanes"].items()},

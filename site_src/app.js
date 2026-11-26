@@ -36,6 +36,16 @@
   // their end date; those are listed in the table, marked, but left out of the totals and the funding chart.
   function current(a) { return a.status === "Active" && !a.past_end_date; }
 
+  // A regional or global appeal (IFRC code with no country in it) is placed in its emergency's countries, as GO lists
+  // them; GO's own country for it is where it is recorded, shown as such and never as the place it serves.
+  function places(a) { return a.regional ? (a.countries || []) : [a.country]; }
+  function placeCell(a) {
+    if (!a.regional) { return esc(cname(a.country)); }
+    var ccs = places(a).map(cname);
+    return esc("Multi-country: " + (ccs.length ? ccs.join(", ") : "no country listed")) +
+      ' <span class="muted small">' + esc("recorded under " + cname(a.country)) + "</span>";
+  }
+
   function tiles() {
     var ea = appeals.filter(function (a) { return a.appeal_type === "Emergency Appeal" && current(a); });
     var req = 0, fund = 0;
@@ -117,7 +127,7 @@
     }).join("") + "</tbody>" : "<tbody><tr><td class='muted'>No plan read yet.</td></tr></tbody>";
     // RL-ASM-1's test: UN plans where the IFRC has no current appeal.
     var ifrcCountries = {};
-    appeals.forEach(function (a) { if (!a.past_end_date) { ifrcCountries[a.country] = true; } });
+    appeals.forEach(function (a) { if (!a.past_end_date) { places(a).forEach(function (c) { ifrcCountries[c] = true; }); } });
     var gap = {};
     plans.forEach(function (p) { if (!ifrcCountries[p.country]) { gap[p.country] = true; } });
     var g = Object.keys(gap).map(cname).sort();
@@ -159,7 +169,8 @@
       if (t && a.appeal_type !== t) { return false; }
       if (hidePast && a.past_end_date) { return false; }
       if (!q) { return true; }
-      return [a.name, a.code, a.hazard, cname(a.country), a.country].join(" ").toLowerCase().indexOf(q) >= 0;
+      return [a.name, a.code, a.hazard, cname(a.country), a.country].concat(places(a).map(cname), places(a))
+        .join(" ").toLowerCase().indexOf(q) >= 0;
     });
     appealTable();
   }
@@ -168,7 +179,7 @@
     var head = "<thead><tr><th scope='col'>Started</th><th scope='col'>Appeal</th><th scope='col'>Type</th><th scope='col'>Country</th><th scope='col'>Requested</th><th scope='col'>Funded</th><th scope='col'>People</th><th scope='col'>Ends</th></tr></thead>";
     document.getElementById("appeals").innerHTML = head + "<tbody>" + filtered.map(function (a) {
       return '<tr id="' + esc(a.id) + '"><td>' + esc(day(a.start_date)) + "</td><td>" + link(a.url, a.name) + ' <span class="muted small">' + esc(a.code) + "</span></td><td>" +
-        esc(a.appeal_type) + "</td><td>" + esc(cname(a.country)) + "</td><td>" + esc(chf(a.amount_requested_chf)) + "</td><td>" + esc(pct(a.funded_share)) + "</td><td>" +
+        esc(a.appeal_type) + "</td><td>" + placeCell(a) + "</td><td>" + esc(chf(a.amount_requested_chf)) + "</td><td>" + esc(pct(a.funded_share)) + "</td><td>" +
         esc(a.people_targeted ? num(a.people_targeted) : "–") + "</td><td>" + esc(day(a.end_date)) + (a.past_end_date ? ' <span class="badge badge-warn">passed</span>' : "") + "</td></tr>";
     }).join("") + "</tbody>";
     document.getElementById("f-count").textContent = filtered.length + " of " + appeals.length;

@@ -1,7 +1,8 @@
 """Retention archives: append-only jsonl files under history/ that keep what the live view drops.
 
     history/appeals-index.jsonl     one line per IFRC appeal Relief reads, new or changed: its id, when seen, a hash
-                                    of the record and IFRC's link. No field of the record itself.
+                                    of the record and IFRC's link, and from 26 Nov 2026 `regional` on a
+                                    regional or global appeal's line. No other field of the record itself.
     history/appeals-counts.json     appeals read per country and start year (rewritten each run; git keeps versions)
     history/who-notices.jsonl       every WHO DON notice read (id, title, place, date, link: no body text)
     history/funding.jsonl           HAPI plan funding and needs, when a value changes
@@ -86,9 +87,13 @@ def _append_lines(path: Path, lines: list[str]) -> int:
     return len(lines)
 
 
-def index_line(rid: str, seen_at: str, h: str, url) -> str:
-    return json.dumps({"id": rid, "seen_at": seen_at, "hash": h, "url": url},
-                      sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+def index_line(rid: str, seen_at: str, h: str, url, regional: bool = False) -> str:
+    """One index line. `regional` (26 Nov 2026) is written only on lines for a regional or global appeal, so
+    lines before it, and every country appeal's line, keep their form."""
+    row = {"id": rid, "seen_at": seen_at, "hash": h, "url": url}
+    if regional:
+        row["regional"] = True
+    return json.dumps(row, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
 
 
 def index_appeals(hist_dir: Path, rows: list[tuple[str, dict]], seen_at: str) -> int:
@@ -108,20 +113,25 @@ def index_appeals(hist_dir: Path, rows: list[tuple[str, dict]], seen_at: str) ->
         h = digest(body)
         if seen.get(rid) != h:
             seen[rid] = h
-            new.append(index_line(rid, seen_at, h, body.get("url")))
+            new.append(index_line(rid, seen_at, h, body.get("url"), bool(body.get("regional"))))
     return len(lines) + _append_lines(path, new)
 
 
 def appeal_counts(records: list[dict], as_of: str) -> dict:
     by: dict[str, dict[str, int]] = {}
+    reg: dict[str, dict[str, int]] = {}
     for r in records:
         cc, year = r.get("country") or "none", (r.get("start_date") or "")[:4] or "none"
-        by.setdefault(cc, {})
-        by[cc][year] = by[cc].get(year, 0) + 1
+        into = reg if r.get("regional") else by
+        into.setdefault(cc, {})
+        into[cc][year] = into[cc].get(year, 0) + 1
     return {"as_of": as_of, "appeals": len(records),
             "what": "IFRC appeals Relief read this run (every Active one, and every one started in the last ten "
-                    "years), counted by country (ISO alpha-2) and start year. Counts only: the records are not here.",
-            "by_country_start_year": {cc: dict(sorted(v.items())) for cc, v in sorted(by.items())}}
+                    "years), counted by country (ISO alpha-2) and start year. Regional and global appeals (an IFRC "
+                    "code with no country in it) are counted apart, under the country GO records them under, "
+                    "because that country is not the place they serve. Counts only: the records are not here.",
+            "by_country_start_year": {cc: dict(sorted(v.items())) for cc, v in sorted(by.items())},
+            "regional_by_recorded_country_start_year": {cc: dict(sorted(v.items())) for cc, v in sorted(reg.items())}}
 
 
 def run_full(snap: dict, private_dir: Path, legacy: Path | None = None) -> dict[str, int]:

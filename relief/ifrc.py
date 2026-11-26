@@ -10,16 +10,27 @@ the full records go to the private archive only (archive.py).
 
 Amounts are in Swiss francs (CHF), as IFRC states appeals. A DREF allocation is normally funded in full on
 approval, so its funded share says little; an Emergency Appeal's funded share is the measure of response.
+
+Regional and global appeals. IFRC codes a country's appeal with a three-letter prefix, the country's two-letter
+code and a number (MDRKE075). A code without that country part is a regional or global appeal (MDRS1001,
+MGR65002, MDR42005, MDRTIGRAY). GO still gives one country for it, often where the appeal is run from (MGR65002,
+the Ukraine and impacted countries appeal, is under Hungary, home of IFRC's Europe Regional Office), so that
+country is not the place the appeal serves. Such a record keeps GO's country as given and gains `regional` and
+`office` (GO's `sector`, the IFRC office named). It is left out of every country's own appeal count, and the
+published record names the emergency's countries as GO's emergency record lists them (`countries`).
 """
 from __future__ import annotations
 
 import json
 import math
+import re
 from datetime import date, timedelta
 
 API = "https://goadmin.ifrc.org/api/v2/appeal/"
 ACTIVE_URL = API + "?status=0&limit=500&ordering=-start_date&format=json"
 HISTORY_URL = API + "?start_date__gte={start}&limit=500&ordering=-start_date&format=json"
+EVENT_URL = "https://goadmin.ifrc.org/api/v2/event/{id}/?format=json"
+COUNTRY_CODE = re.compile(r"^[A-Z]{3}[A-Z]{2}\d")
 EMERGENCY_PAGE = "https://go.ifrc.org/emergencies/{id}"
 COUNTRY_PAGE = "https://go.ifrc.org/countries/{id}"
 BASELINE_YEARS = 10
@@ -41,8 +52,28 @@ def _day(s: str | None) -> str | None:
     return s[:10] if s else None
 
 
+def is_regional(code: str | None) -> bool:
+    """True when IFRC's appeal code carries no country: a regional or global appeal."""
+    return bool(code) and not COUNTRY_CODE.match(code.strip().upper())
+
+
+def parse_event(body: bytes) -> list[str]:
+    """The countries GO's emergency record lists, as alpha-2 codes in GO's order. Nothing else of it is kept."""
+    doc = json.loads(body)
+    if not isinstance(doc, dict) or "countries" not in doc:
+        raise ValueError("GO emergency reply has no countries list")
+    out = []
+    for c in doc.get("countries") or []:
+        cc = ((c or {}).get("iso") or "").upper()
+        if len(cc) == 2 and cc not in out:
+            out.append(cc)
+    return out
+
+
 def record(a: dict) -> dict | None:
-    """One appeal as Relief keeps it, or None when it has no country (regional appeals)."""
+    """One appeal as Relief keeps it, or None when GO gives it no country (a few regional appeals have a region in
+    its place). A regional or global appeal (module notes) gains `regional` and `office`; no other record changes,
+    so a country appeal's stored hash stays the same."""
     c = a.get("country") or {}
     cc = (c.get("iso") or "").upper()
     if len(cc) != 2:
@@ -51,7 +82,7 @@ def record(a: dict) -> dict | None:
     ev_id = a.get("event") or ev.get("id")
     req = float(a.get("amount_requested") or 0)
     fund = float(a.get("amount_funded") or 0)
-    return {
+    rec = {
         "key": f"ifrc:{a['id']}",
         "lane": "ifrc",
         "appeal_id": str(a["id"]),
@@ -75,6 +106,10 @@ def record(a: dict) -> dict | None:
         "ifrc_severity": ev.get("ifrc_severity_level_display"),
         "url": EMERGENCY_PAGE.format(id=ev_id) if ev_id else COUNTRY_PAGE.format(id=c.get("id")),
     }
+    if is_regional(a.get("code")):
+        rec["regional"] = True
+        rec["office"] = (a.get("sector") or "").strip() or None
+    return rec
 
 
 def poisson_tail(k: int, lam: float) -> float:
@@ -95,7 +130,8 @@ def place_context(history: list[dict], today: date) -> dict[str, dict]:
     """For each country: appeals started in the last RECENT_DAYS against its own rate since BASELINE_START.
 
     The rate is measured on the window before the recent period, so the recent appeals never raise their own
-    baseline. It is a measurement of how unusual the count is for this place, not a warning."""
+    baseline. It is a measurement of how unusual the count is for this place, not a warning. Regional and global
+    appeals are not counted: GO's country for them is where the appeal is recorded, not a place it serves."""
     start = baseline_start(today)
     recent_from = today - timedelta(days=RECENT_DAYS)
     base_days = (recent_from - start).days
@@ -103,7 +139,7 @@ def place_context(history: list[dict], today: date) -> dict[str, dict]:
     counts: dict[str, list[int]] = {}
     for r in history:
         sd = r.get("start_date")
-        if not sd:
+        if not sd or r.get("regional"):
             continue
         d = date.fromisoformat(sd)
         if d < start or d > today:
@@ -118,6 +154,20 @@ def place_context(history: list[dict], today: date) -> dict[str, dict]:
                    "appeals_in_baseline": before,
                    "tail_probability": round(poisson_tail(recent, lam), 4)}
     return out
+
+
+def add_countries(records: list[dict], read_event) -> int:
+    """Give each published regional record `countries`: the countries of its GO emergency (`read_event(id)` returns
+    the reply's bytes), [] when it has no emergency. One read per emergency. Returns the reads made."""
+    seen: dict[str, list[str]] = {}
+    for r in records:
+        if not r.get("regional"):
+            continue
+        ev = r.get("emergency_id")
+        if ev and ev not in seen:
+            seen[ev] = parse_event(read_event(ev))
+        r["countries"] = list(seen.get(ev, [])) if ev else []
+    return len(seen)
 
 
 def all_records(active: list[dict], history: list[dict]) -> list[dict]:
@@ -149,10 +199,12 @@ def build(active: list[dict], history: list[dict], today: date) -> tuple[list[di
             continue
         r = dict(r)
         r["past_end_date"] = bool(r["end_date"] and r["end_date"] < today.isoformat() and r["status"] == "Active")
-        r["place_context"] = ctx.get(r["country"])
+        r["place_context"] = None if r.get("regional") else ctx.get(r["country"])
         out.append(r)
     out.sort(key=lambda r: (r["start_date"] or "", r["appeal_id"]), reverse=True)
     extra = {"active": sum(1 for r in out if r["status"] == "Active"), "published": len(out),
              "baseline_appeals": len(hist), "no_country": skipped,
+             "regional": sum(1 for r in out if r.get("regional")),
+             "regional_in_baseline": sum(1 for r in hist if r.get("regional")),
              "baseline_start": baseline_start(today).isoformat(), "recent_days": RECENT_DAYS}
     return out, extra
