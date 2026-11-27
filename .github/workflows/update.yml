@@ -15,7 +15,7 @@ name: update
 # collect step for the hapi and reliefweb lanes, and to both checks, whose terms scan fails the build if either
 # value reaches the published files. A lane whose key is missing fails on its own and keeps its last good copy.
 #
-# PROJECT below is the Pages project name; change it when Tom names the program.
+# PROJECT below is the Pages project name.
 on:
   push:
     branches: [main]
