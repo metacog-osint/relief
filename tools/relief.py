@@ -70,7 +70,7 @@ def _pages(source_id, first_url, raw_dir, getter, limit=20):
     return results, recs, count
 
 
-def _lane_ifrc(raw_dir, now, getter, keys):
+def _lane_ifrc(raw_dir, now, getter, keys, previous=None):
     today = _today(now)
     active, r1, n_active = _pages("ifrc-go-appeals", ifrc.ACTIVE_URL, raw_dir, getter)
     history, r2, _ = _pages("ifrc-go-appeals", ifrc.HISTORY_URL.format(start=ifrc.baseline_start(today).isoformat()),
@@ -86,11 +86,12 @@ def _lane_ifrc(raw_dir, now, getter, keys):
         r3.append(rec)
         return body
 
-    extra["emergencies_read"] = ifrc.add_countries(records, read_event)
+    # one emergency read failing fails only that emergency (ifrc.add_countries), never the lane
+    extra["emergencies_read"], extra["emergencies_unread"] = ifrc.add_countries(records, read_event, previous)
     return {"records": records, "extra": extra, "archive": ifrc.all_records(active, history)}, r1 + r2 + r3
 
 
-def _lane_who(raw_dir, now, getter, keys):
+def _lane_who(raw_dir, now, getter, keys, previous=None):
     values, recs = [], []
     for i in range(who_don.PAGES):
         body, rec = fetch.fetch("who-don", who_don.PAGE_URL.format(skip=100 * i), raw_dir, "json", timeout=90,
@@ -122,7 +123,7 @@ def _hapi_pages(url_t, raw_dir, getter, headers, **fmt):
     raise ValueError(f"more than 10 pages at {url_t.split('?')[0]}")
 
 
-def _lane_hapi(raw_dir, now, getter, keys):
+def _lane_hapi(raw_dir, now, getter, keys, previous=None):
     key = keys.get(hapi.KEY_ENV)
     if not key:
         raise RuntimeError(f"{hapi.KEY_ENV} is not set")
@@ -158,7 +159,7 @@ def _lane_hapi(raw_dir, now, getter, keys):
     return {"records": records, "extra": extra}, recs
 
 
-def _lane_reliefweb(raw_dir, now, getter, keys):
+def _lane_reliefweb(raw_dir, now, getter, keys, previous=None):
     key = keys.get(reliefweb.KEY_ENV)
     if not key:
         raise RuntimeError(f"{reliefweb.KEY_ENV} is not set")
@@ -180,6 +181,8 @@ def _lane_reliefweb(raw_dir, now, getter, keys):
     return {"records": records, "extra": extra}, recs
 
 
+# Each lane: (raw_dir, now, getter, keys, previous) -> (result, fetch records); previous is the lane's records in
+# the last snapshot.
 LANE_FN = {"ifrc": _lane_ifrc, "who": _lane_who, "hapi": _lane_hapi, "reliefweb": _lane_reliefweb}
 
 
@@ -200,7 +203,8 @@ def collect(root: Path = ROOT, getter=None, only: list[str] | None = None, now: 
             snap["lanes"][lane] = {**prev_lane, "from_previous": True} if prev_lane else {"status": "not run"}
             continue
         try:
-            result, recs = LANE_FN[lane](raw_dir, now, getter, keys)
+            result, recs = LANE_FN[lane](raw_dir, now, getter, keys,
+                                         previous=(prev.get("records") or {}).get(lane) or [])
             snap["records"][lane] = result["records"]
             snap["extra"][lane] = result["extra"]
             snap["archive"][lane] = result.get("archive") or []

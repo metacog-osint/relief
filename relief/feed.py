@@ -206,7 +206,8 @@ def ifrc_summary(r: dict, generated: str | None = None) -> str:
         bits = [f"IFRC launched {kind}" + (f" ({r['hazard']})" if r.get("hazard") else "")
                 + f" on {_day_text(r['start_date'])}.",
                 (f"GO lists the emergency's {'country' if len(ccs) == 1 else 'countries'} as {names}."
-                 if ccs else "GO lists no country for the emergency."),
+                 if ccs else "Relief could not read GO's emergency record for its countries in this run."
+                 if r.get("countries_unread") else "GO lists no country for the emergency."),
                 f"IFRC's code {r['code']} marks a regional or global appeal; GO records it under "
                 f"{_name(r['country'])}{office}, which is not counted as that country's appeal."]
     else:
