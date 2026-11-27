@@ -25,9 +25,9 @@ from relief import archive, feed, hapi, ifrc, iso, places, reliefweb, who_don  #
 _spec = importlib.util.spec_from_file_location("relief_cli", ROOT / "tools" / "relief.py")
 cli = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(cli)
-from tic_doctrine import contract, registers  # noqa: E402
+from tic_doctrine import contract, ladder, registers  # noqa: E402
 
-FIX = ROOT / "tests" / "fixtures"
+FIX =ROOT / "tests" / "fixtures"
 NOW = "2026-11-16T02:00:00Z"
 KEYS = {"HDX_HAPI_APP_IDENTIFIER": "test-hapi-identifier", "RELIEFWEB_APPNAME": "test-relief-appname"}
 SEEN: list[str] = []
@@ -361,6 +361,52 @@ class Pipeline(unittest.TestCase):
     def test_ids_stable(self):
         self.assertEqual(feed.item_id("ifrc:8439"), feed.item_id("ifrc:8439"))
         self.assertTrue(feed.item_id("who:2026-DON626").startswith("RL-WHO-"))
+
+    def test_event_ladder(self):
+        """IFRC appeals and WHO notices are verified on their issuer's own report (kit event ladder, basis
+        official); HAPI plans and ReliefWeb's disasters and counts are outside the ladder."""
+        self.run_once()
+        path = self.tmp / "site" / "data" / "feed.geojson"
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        regs = registers.ids(self.tmp / "doctrine")
+        issuer = {"IFRC": "ifrc-go-appeals", "WHO": "who-don"}
+        seen = set()
+        for f in doc["features"]:
+            p = f["properties"]
+            lane = p["id"].split("-")[1]
+            seen.add(lane)
+            self.assertEqual([m for _, sev, m in contract.check(f, regs) if sev == "error"], [], p["id"])
+            if lane in issuer:
+                c = p["corroboration"]
+                self.assertEqual(ladder.state_of(f), "verified", p["id"])
+                self.assertFalse(ladder.rests_on_claim(f))
+                self.assertEqual({k: c[k] for k in ("state", "basis", "origins", "official", "rule")},
+                                 {"state": "verified", "basis": "official", "origins": 1, "official": issuer[lane],
+                                  "rule": ladder.rule()})
+                self.assertEqual(c["official"], p["sources"][0]["id"])
+                self.assertIsNone(c["confirmed_at"])
+                self.assertIsNone(c["geolocation"])
+                day = p["appeal"]["start_date"] if lane == "IFRC" else p["sources"][0]["published_at"][:10]
+                self.assertEqual(c["first_reported_at"], min(f"{day}T00:00:00Z", p["published_at"]))
+                self.assertEqual(c["verified_at"], c["first_reported_at"])
+            else:
+                self.assertNotIn("corroboration", p, p["id"])
+                self.assertIsNone(ladder.state_of(f))
+        self.assertEqual(seen, {"IFRC", "WHO", "HAPI", "RW", "RWC"})
+        # A report dated after the feed was made is held at the feed's time, never after it.
+        late = feed.corroboration("ifrc", {"start_date": "2026-12-01"}, NOW)
+        self.assertEqual((late["first_reported_at"], late["verified_at"]), (NOW, NOW))
+        self.assertIsNone(feed.corroboration("hapi", {}, NOW))
+        self.assertIsNone(feed.corroboration("reliefweb", {}, NOW))
+        # check fails an IFRC or WHO item without the member, and a measurement with one.
+        ev = next(f for f in doc["features"] if f["properties"]["id"].startswith("RL-WHO-"))
+        ms = next(f for f in doc["features"] if f["properties"]["id"].startswith("RL-HAPI-"))
+        ms["properties"]["corroboration"] = ev["properties"].pop("corroboration")
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        errs = cli.check_all(self.tmp)
+        self.assertTrue(any(e.startswith(ev["properties"]["id"]) and "issuer's own report" in e for e in errs), errs)
+        self.assertTrue(any(e.startswith(ms["properties"]["id"]) and "outside the event ladder" in e for e in errs),
+                        errs)
 
 
 class Retention(unittest.TestCase):

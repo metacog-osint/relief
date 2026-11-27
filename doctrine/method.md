@@ -97,6 +97,19 @@ failing. It never reads as "nothing new".
 ## Human review
 None in this slice. The title parser's misses are counted every run (`coverage_fraction` 0 on the item).
 
+## Event ladder
+Each IFRC appeal or DREF allocation (`RL-IFRC-*`) and each WHO notice (`RL-WHO-*`) carries the kit's event ladder
+member `corroboration` ([event ladder](https://github.com/metacog-osint/tic-doctrine/blob/main/docs/event-ladder.md),
+kit 0.6.13): state `verified`, basis `official`, one origin, with the issuer's source id (`ifrc-go-appeals` or
+`who-don`). The IFRC speaks within its own remit about an appeal or allocation it launched, and WHO about a notice it
+publishes. `first_reported_at` and `verified_at` are the issuer's own date, to the day: the appeal's start date or the
+notice's publication date (midnight UTC, never after the feed's time). Verified means the issuer reported it; it says
+nothing about the size of the need or the outbreak.
+
+Outside the ladder, with no member: HAPI plans and needs (`RL-HAPI-*`) and ReliefWeb's counts (`RL-RWC-*`), which are
+measurements, and ReliefWeb's disaster records (`RL-RW-*`), which index other publishers' reports (an aggregator is
+not an origin) and whose origins Relief does not read. `check` recomputes the member from each item's own fields.
+
 ## Next lanes (planned)
 IPC phases (waits on Tom's decision on IPC's terms, then an API token); needs by first-level region from HAPI for a
 map; UNHCR refugee figures and the INFORM risk index (both open licences, in HAPI). IOM DTM is link-only (its terms
@@ -104,6 +117,8 @@ forbid redistribution).
 
 ## Change log
 - relief-0.1 (16 Nov 2026): first slice, IFRC appeals and WHO Disease Outbreak News.
+- Kit 0.6.13 (27 Nov 2026, method unchanged): IFRC and WHO items carry the event ladder's `corroboration` member
+  (verified, basis official); see Event ladder above.
 - relief-0.2 (16 Nov 2026): thresholds for RL-IND-1 (p < 0.01, at least 2 appeals) and RL-IND-2 (first WHO
   notice for a country in two years) set by Tom; items that meet one are tier anomaly with a `baseline_ref`.
 - relief-0.4 (26 Nov 2026): regional and global IFRC appeals (code with no country in it) are flagged

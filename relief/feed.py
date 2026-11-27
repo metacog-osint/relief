@@ -24,7 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "doctrine" / "kit" / "python"))
-from tic_doctrine import CONTRACT, __version__ as KIT_VERSION, geo  # noqa: E402
+from tic_doctrine import CONTRACT, __version__ as KIT_VERSION, geo, ladder  # noqa: E402
 
 from . import places  # noqa: E402
 
@@ -365,6 +365,28 @@ def event_times(r: dict) -> dict:
     return out
 
 
+# The event ladder (kit 0.6.13, docs/event-ladder.md). An IFRC appeal or DREF allocation is the IFRC's own record of
+# what it launched, and a Disease Outbreak News notice is a notice WHO publishes: each is an official source within its
+# own remit, so the item is verified on basis official from the day the issuer dates it. ReliefWeb's disaster records
+# index other publishers' reports (an aggregator is not an origin) and its counts and HAPI's plan figures are
+# measurements, so those items are outside the ladder and carry no corroboration member.
+LADDER_LANES = ("ifrc", "who")
+
+
+def corroboration(lane: str, r: dict, generated: str) -> dict | None:
+    """The item's `corroboration` member: verified on the issuer's own report for IFRC and WHO, else None.
+
+    first_reported_at and verified_at are the issuer's own date for the report, to the day (midnight UTC): the
+    appeal's start date, or the notice's publication date. Never after the feed's generation time."""
+    if lane not in LADDER_LANES:
+        return None
+    at = _midnight(r.get("start_date") if lane == "ifrc" else r.get("published_day")) or generated
+    at = min(at, generated)
+    return {"state": "verified", "basis": "official", "origins": 1, "official": SOURCES[lane]["id"],
+            "geolocation": None, "first_reported_at": at, "confirmed_at": None, "verified_at": at,
+            "rule": ladder.rule()}
+
+
 def signal(lane: str, r: dict, hit: dict) -> dict:
     """The one number an anomaly's tier rests on. Poisson tails stay in the item's own fields: `exceedance` is a
     share of the subject's baseline readings, which these counts do not have."""
@@ -488,6 +510,9 @@ def feature(r: dict, generated: str) -> dict:
     if props["data_as_of"] > generated:   # a source clock ahead of ours; contract 2.1: never after publication
         props["data_as_of"] = generated
         props.pop("data_as_of_precision", None)
+    corr = corroboration(lane, r, generated)
+    if corr:
+        props["corroboration"] = corr
     return {"type": "Feature", "geometry": geom, "properties": props}
 
 
