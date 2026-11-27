@@ -18,7 +18,9 @@ import tic_archive as ta  # noqa: E402
 NOW = datetime(2026, 11, 19, 6, 0, tzinfo=timezone.utc)
 PROGRAM = "relief"
 WF = (ROOT / ".github" / "workflows" / "update.yml").read_text(encoding="utf-8")
-STEP = WF[WF.index("- name: Private archive (raw replies, to tic-archive)"):]
+_AT = WF.index("- name: Private archive (raw replies, to tic-archive)")
+_END = WF.find("\n      - name: ", _AT + 1)
+STEP = WF[_AT:] if _END < 0 else WF[_AT:_END]      # the raw step alone, not the lanes after it
 
 
 def put(files: dict, **kw):

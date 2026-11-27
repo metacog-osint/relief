@@ -510,7 +510,9 @@ class Retention(unittest.TestCase):
         at = [step.index(x) for x in order]
         self.assertEqual(at, sorted(at))
         self.assertIn("GH_TOKEN: ${{ secrets.TIC_ARCHIVE_TOKEN }}", step)
-        self.assertNotIn("--src history", wf)
+        # The full records go up only from the private folder; history/ has a lane of its own (public files only).
+        self.assertIn("--lane appeals --src data/private/appeals", step)
+        self.assertNotIn("--lane appeals --src history", wf)
         last = wf[wf.index("- name: Private archive (raw replies, to tic-archive)"):]
         self.assertIn("data/private/appeals-failed", last)
 
