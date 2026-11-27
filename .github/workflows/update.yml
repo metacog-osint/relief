@@ -143,6 +143,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PAGES_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          # The step succeeds when it skips itself too, so only a real deploy sets the output deployed=true, which
+          # the site lane of the private archive waits for.
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "Cloudflare secrets not set; skipping deploy"; exit 0
           fi
@@ -152,6 +154,7 @@ jobs:
             if [ "$wait" != 0 ]; then echo "::warning::Cloudflare deploy failed; trying again in ${wait} s"; sleep "$wait"; fi
             if npx --yes wrangler@4.151.3 pages deploy site --project-name "$PROJECT" --branch main \
                  --commit-hash "$GITHUB_SHA" --commit-message "update $GITHUB_SHA" --commit-dirty=true; then
+              echo "deployed=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           done
@@ -187,10 +190,12 @@ jobs:
       #            archives an older checkout's history/ as the newest snapshot.
       #   state    data/ without data/raw (lane raw) and data/private (lane appeals): the run snapshot, which the
       #            Actions cache keeps for 7 days. Only once the first check passed, so it is a snapshot the next run
-      #            may use (the step after the cache restore reads it when the cache has none). The keys are
-      #            removed as in lane raw, though collect never writes them there.
+      #            may use (the step after the cache restore reads it when the cache has none). Either key's value
+      #            would be replaced, though collect never writes it there. No --redact-param: any other text (an
+      #            "appname=" inside a record) is archived as it is, so the snapshot restores byte for byte.
       #   site     site/ as deployed: every published file, feed.geojson and ended.geojson (COP) among them, each
-      #            replaced by the next deploy. Only when the deploy step succeeded.
+      #            replaced by the next deploy. Only when wrangler deployed it (the deploy step's output deployed),
+      #            not when that step skipped itself for want of the Cloudflare secrets.
       # history/ and site/ are public already, so they are archived as they are and match the public copy by hash.
       # Each lane is tried even if another failed; any failure turns the run red after the live site is updated.
       - name: Private archive (history, run snapshot and site, to tic-archive)
@@ -201,7 +206,7 @@ jobs:
           HDX_HAPI_APP_IDENTIFIER: ${{ secrets.HDX_HAPI_APP_IDENTIFIER }}
           HISTORY: ${{ steps.history.outcome }}
           CHECKED: ${{ steps.check.outcome }}
-          DEPLOYED: ${{ steps.deploy.outcome }}
+          DEPLOYED: ${{ steps.deploy.outputs.deployed }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
             echo "::error::secret TIC_ARCHIVE_TOKEN is not set, so history/, the run snapshot and site/ did not reach the private archive"; exit 1
@@ -214,12 +219,12 @@ jobs:
           fi
           if [ "$CHECKED" = "success" ]; then
             python tools/tic_archive.py put --program relief --lane state --src data --exclude 'raw/*' \
-              --exclude 'private/*' --redact-env-if-set RELIEFWEB_APPNAME --redact-param appname \
-              --redact-env-if-set HDX_HAPI_APP_IDENTIFIER --redact-param app_identifier || failed=1
+              --exclude 'private/*' --redact-env-if-set RELIEFWEB_APPNAME \
+              --redact-env-if-set HDX_HAPI_APP_IDENTIFIER || failed=1
           else
             echo "state: the first check did not pass this run, so the snapshot was not archived"
           fi
-          if [ "$DEPLOYED" = "success" ]; then
+          if [ "$DEPLOYED" = "true" ]; then
             python tools/tic_archive.py put --program relief --lane site --src site || failed=1
           else
             echo "site: not deployed this run, so not archived"

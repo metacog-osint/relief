@@ -78,8 +78,9 @@ def tree(root: Path) -> dict[str, str]:
             for p in root.rglob("*") if p.is_file()}
 
 
-def run_archive(argv: list[str], cwd: Path, store: Path, stamp: str = FIRST) -> int:
-    """One tic_archive.py command as the workflow gives it, in cwd, against a DirStore at store."""
+def run_archive(argv: list[str], cwd: Path, store: Path, stamp: str = FIRST, keys: dict | None = None) -> int:
+    """One tic_archive.py command as the workflow gives it, in cwd, against a DirStore at store. The keys are unset
+    unless given (as when the secrets are set)."""
     def no_subprocess(*a, **k):
         raise AssertionError("an archive command tried to run a subprocess (gh): nothing may leave the test")
 
@@ -87,6 +88,7 @@ def run_archive(argv: list[str], cwd: Path, store: Path, stamp: str = FIRST) -> 
     os.chdir(cwd)
     try:
         env = {k: v for k, v in os.environ.items() if k not in (*KEYS, "GH_TOKEN")}
+        env.update(keys or {})
         with mock.patch.dict(os.environ, env, clear=True), \
                 mock.patch.object(ta, "GhStore", lambda *a, **k: ta.DirStore(store)), \
                 mock.patch.object(ta, "utc_stamp", lambda now=None: stamp), \
@@ -144,9 +146,11 @@ class TestWorkflowLanes(unittest.TestCase):
         # history/ and site/ are public: archived as they are, so they match the public copy by hash.
         for lane in ("history", "site"):
             self.assertFalse([t for t in lanes[lane] if t.startswith("--redact")], lane)
-        # The snapshot never holds the keys (collect strips them); it is redacted as lane raw is, in case.
-        for flag in ("--redact-env-if-set", "--redact-param"):
-            self.assertEqual(arg(lanes["state"], flag), arg(lanes["raw"], flag))
+        # The snapshot never holds the keys (collect strips them); their values are replaced as in lane raw, in
+        # case. No --redact-param there: it rewrites any "appname=..." text, so the snapshot would not restore
+        # byte for byte (TestSnapshotRestoreFromTheArchive).
+        self.assertEqual(arg(lanes["state"], "--redact-env-if-set"), arg(lanes["raw"], "--redact-env-if-set"))
+        self.assertEqual(arg(lanes["state"], "--redact-param"), [])
 
     def test_step_after_the_deploy_and_loud_on_failure(self):
         names = list(STEPS)
@@ -168,14 +172,16 @@ class TestWorkflowLanes(unittest.TestCase):
         text = step("Private archive (history")
         self.assertIn("HISTORY: ${{ steps.history.outcome }}", text)
         self.assertIn("CHECKED: ${{ steps.check.outcome }}", text)
-        self.assertIn("DEPLOYED: ${{ steps.deploy.outcome }}", text)
+        # The deploy step also succeeds when it skips itself, so the site lane waits for its output, not its outcome.
+        self.assertIn("DEPLOYED: ${{ steps.deploy.outputs.deployed }}", text)
         self.assertIn("id: history", step("History"))
         self.assertIn("id: check", step("Check (registers"))
         self.assertIn("id: deploy", step("Deploy site/"))
         flat = text.replace("\\\n", " ")
-        for var, lane in (("HISTORY", "history"), ("CHECKED", "state"), ("DEPLOYED", "site")):
-            self.assertRegex(flat, r'if \[ "\$' + var + r'" = "success" \]; then\s+python tools/tic_archive\.py put '
-                                   r'--program relief --lane ' + lane + ' ')
+        for var, value, lane in (("HISTORY", "success", "history"), ("CHECKED", "success", "state"),
+                                 ("DEPLOYED", "true", "site")):
+            self.assertRegex(flat, r'if \[ "\$' + var + r'" = "' + value + r'" \]; then\s+python tools/tic_archive\.py '
+                                   r'put --program relief --lane ' + lane + ' ')
 
     def test_what_the_workflow_keeps_for_a_while_or_replaces_is_inside_the_archived_folders(self):
         # The Actions cache (evicted after 7 days) holds this path; the state lane takes data/ without raw/private.
@@ -308,6 +314,108 @@ class TestSnapshotRestoreFromTheArchive(unittest.TestCase):
             self.assertEqual(sorted(tree(runner_temp / "archive-state")), ["snapshot.json"])
             self.assertEqual((runner_temp / "archive-state" / "snapshot.json").read_bytes(),
                              (run_root / "data" / "snapshot.json").read_bytes())
+
+    def state_round_trip(self, snapshot: bytes, keys: dict | None = None) -> bytes:
+        """data/snapshot.json through the workflow's state put and its cache-miss restore; the bytes restored."""
+        (call,) = archive_calls(step("No cache entry, so the snapshot from the private archive"), "restore")
+        (state_put,) = [c for c in put_calls() if arg(c, "--lane") == ["state"]]
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            run = td / "run"
+            (run / "data").mkdir(parents=True)
+            (run / "data" / "snapshot.json").write_bytes(snapshot)
+            self.assertEqual(run_archive(state_put, run, td / "store", keys=keys), 0)
+            fresh, runner_temp = td / "next-run", td / "runner-temp"
+            fresh.mkdir()
+            argv = [t.replace("$RUNNER_TEMP", str(runner_temp)) for t in call]
+            self.assertEqual(run_archive(argv, fresh, td / "store"), 0)
+            return (runner_temp / "archive-state" / "snapshot.json").read_bytes()
+
+    def test_text_that_looks_like_a_key_parameter_restores_byte_for_byte(self):
+        # Not a key: text a record could hold. Only key values are replaced in this lane, so the next run gets the
+        # snapshot exactly as the run before wrote it.
+        snap = (b'{"records": {"ifrc": [{"note": "https://example.org/a?appname=abc123&x=1 app_identifier=zz9"}]},\n'
+                b' "lanes": {"reliefweb": {"error": "URLError: appname=<key>"}}}\n')
+        self.assertEqual(self.state_round_trip(snap), snap)
+
+    def test_a_key_value_in_the_snapshot_is_still_replaced(self):
+        value = KEYS["RELIEFWEB_APPNAME"]
+        snap = ('{"lanes": {"reliefweb": {"error": "leaked ' + value + '"}}}\n').encode()
+        got = self.state_round_trip(snap, keys=KEYS)
+        self.assertNotIn(value.encode(), got)
+        self.assertEqual(got, snap.replace(value.encode(), b"REDACTED"))
+
+
+BASH = shutil.which("bash")
+
+
+def run_script(text: str) -> str:
+    """The `run: |` block of a step, as the runner gets it."""
+    lines = text.split("run: |\n", 1)[1].split("\n")
+    body = []
+    for line in lines:
+        if line.strip() and not line.startswith(" " * 10):
+            break
+        body.append(line[10:])
+    return "\n".join(body) + "\n"
+
+
+def step_env(text: str, given: dict) -> dict:
+    """The step's env block, its ${{ }} expressions evaluated from given: {"steps.deploy.outcome": ...,
+    "steps.deploy.outputs.deployed": ..., "secrets.X": ..., "vars.X": ...}; a term not given is empty."""
+    env = {}
+    for name, expr in re.findall(r"(?m)^ {10}([A-Z_]+): \$\{\{ (.+?) \}\}", text.split("run: |\n", 1)[0]):
+        env[name] = next((given[t] for t in (t.strip() for t in expr.split("||")) if given.get(t)), "")
+    return env
+
+
+@unittest.skipUnless(BASH, "needs bash, as the runner has")
+class TestSiteLaneOnlyAfterARealDeploy(unittest.TestCase):
+    """The deploy step and the archive step's lane choice run in bash as the runner runs them, with wrangler and the
+    archive tool replaced by stubs. The deploy step ends `success` when it skips itself (no Cloudflare secrets), so
+    the site lane must not take that as a deploy."""
+
+    def bash(self, script: str, env: dict, td: Path, stubs: str) -> int:
+        full = {k: v for k, v in os.environ.items() if k in ("PATH", "SYSTEMROOT", "TEMP", "TMP", "HOME")}
+        full.update(env, CALLS=(td / "calls").as_posix(), GITHUB_OUTPUT=(td / "output").as_posix())
+        r = subprocess.run([BASH, "--noprofile", "--norc", "-eo", "pipefail", "-c", stubs + script], env=full,
+                           capture_output=True, text=True, timeout=60)
+        return r.returncode
+
+    def run_case(self, secrets: dict, npx_rc: int) -> tuple[int, list[str], list[str]]:
+        """(deploy step exit code, wrangler calls, lanes the archive step put)."""
+        deploy, archive_step = step("Deploy site/"), step("Private archive (history")
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            stubs = ('npx() { echo "npx $*" >> "$CALLS"; return ' + str(npx_rc) + '; }\nsleep() { :; }\n')
+            rc = self.bash(run_script(deploy), step_env(deploy, secrets), td, stubs)
+            calls = (td / "calls").read_text().splitlines() if (td / "calls").exists() else []
+            out = dict(line.split("=", 1) for line in (td / "output").read_text().splitlines()) \
+                if (td / "output").exists() else {}
+            given = {"secrets.TIC_ARCHIVE_TOKEN": "token", "steps.history.outcome": "success",
+                     "steps.check.outcome": "success", "steps.deploy.outcome": "success" if rc == 0 else "failure"}
+            given.update({f"steps.deploy.outputs.{k}": v for k, v in out.items()})
+            (td / "calls").unlink(missing_ok=True)
+            self.assertEqual(self.bash(run_script(archive_step), step_env(archive_step, given), td,
+                                       'python() { echo "$*" >> "$CALLS"; }\n'), 0)
+            puts = (td / "calls").read_text().splitlines()
+            lanes = [arg(shlex.split(p), "--lane")[0] for p in puts if p.startswith("tools/tic_archive.py put")]
+            return rc, calls, lanes
+
+    def test_skipped_deploy_is_not_archived_as_deployed(self):
+        rc, calls, lanes = self.run_case({}, 0)
+        self.assertEqual((rc, calls), (0, []))          # the step skipped itself and still succeeded
+        self.assertEqual(lanes, ["history", "state"])
+
+    def test_real_deploy_is_archived(self):
+        rc, calls, lanes = self.run_case({"secrets.CLOUDFLARE_PAGES_TOKEN": "t", "vars.CLOUDFLARE_ACCOUNT_ID": "a"}, 0)
+        self.assertEqual((rc, len(calls)), (0, 1))
+        self.assertEqual(lanes, ["history", "state", "site"])
+
+    def test_failed_deploy_is_not_archived(self):
+        rc, calls, lanes = self.run_case({"secrets.CLOUDFLARE_PAGES_TOKEN": "t", "vars.CLOUDFLARE_ACCOUNT_ID": "a"}, 1)
+        self.assertEqual((rc, len(calls)), (1, 3))      # three tries, then the step fails
+        self.assertEqual(lanes, ["history", "state"])
 
 
 if __name__ == "__main__":
