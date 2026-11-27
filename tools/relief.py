@@ -70,7 +70,7 @@ def _pages(source_id, first_url, raw_dir, getter, limit=20):
     return results, recs, count
 
 
-def _lane_ifrc(raw_dir, now, getter, keys):
+def _lane_ifrc(raw_dir, now, getter, keys, previous=None):
     today = _today(now)
     active, r1, n_active = _pages("ifrc-go-appeals", ifrc.ACTIVE_URL, raw_dir, getter)
     history, r2, _ = _pages("ifrc-go-appeals", ifrc.HISTORY_URL.format(start=ifrc.baseline_start(today).isoformat()),
@@ -86,11 +86,12 @@ def _lane_ifrc(raw_dir, now, getter, keys):
         r3.append(rec)
         return body
 
-    extra["emergencies_read"] = ifrc.add_countries(records, read_event)
+    # one emergency read failing fails only that emergency (ifrc.add_countries), never the lane
+    extra["emergencies_read"], extra["emergencies_unread"] = ifrc.add_countries(records, read_event, previous)
     return {"records": records, "extra": extra, "archive": ifrc.all_records(active, history)}, r1 + r2 + r3
 
 
-def _lane_who(raw_dir, now, getter, keys):
+def _lane_who(raw_dir, now, getter, keys, previous=None):
     values, recs = [], []
     for i in range(who_don.PAGES):
         body, rec = fetch.fetch("who-don", who_don.PAGE_URL.format(skip=100 * i), raw_dir, "json", timeout=90,
@@ -122,7 +123,7 @@ def _hapi_pages(url_t, raw_dir, getter, headers, **fmt):
     raise ValueError(f"more than 10 pages at {url_t.split('?')[0]}")
 
 
-def _lane_hapi(raw_dir, now, getter, keys):
+def _lane_hapi(raw_dir, now, getter, keys, previous=None):
     key = keys.get(hapi.KEY_ENV)
     if not key:
         raise RuntimeError(f"{hapi.KEY_ENV} is not set")
@@ -158,7 +159,7 @@ def _lane_hapi(raw_dir, now, getter, keys):
     return {"records": records, "extra": extra}, recs
 
 
-def _lane_reliefweb(raw_dir, now, getter, keys):
+def _lane_reliefweb(raw_dir, now, getter, keys, previous=None):
     key = keys.get(reliefweb.KEY_ENV)
     if not key:
         raise RuntimeError(f"{reliefweb.KEY_ENV} is not set")
@@ -180,6 +181,8 @@ def _lane_reliefweb(raw_dir, now, getter, keys):
     return {"records": records, "extra": extra}, recs
 
 
+# Each lane: (raw_dir, now, getter, keys, previous) -> (result, fetch records); previous is the lane's records in
+# the last snapshot.
 LANE_FN = {"ifrc": _lane_ifrc, "who": _lane_who, "hapi": _lane_hapi, "reliefweb": _lane_reliefweb}
 
 
@@ -200,7 +203,8 @@ def collect(root: Path = ROOT, getter=None, only: list[str] | None = None, now: 
             snap["lanes"][lane] = {**prev_lane, "from_previous": True} if prev_lane else {"status": "not run"}
             continue
         try:
-            result, recs = LANE_FN[lane](raw_dir, now, getter, keys)
+            result, recs = LANE_FN[lane](raw_dir, now, getter, keys,
+                                         previous=(prev.get("records") or {}).get(lane) or [])
             snap["records"][lane] = result["records"]
             snap["extra"][lane] = result["extra"]
             snap["archive"][lane] = result.get("archive") or []
@@ -289,7 +293,7 @@ URL_IN_TEXT = re.compile(r"https?://[^\s\"'<>)\]]+")
 # WHO's notice body fields must never reach the site (WHO's terms: no substantial reproduction).
 WHO_BODY_FIELDS = ("Overview", "Epidemiology", "Assessment", "Advice", "Response", "FurtherInformation", "Summary")
 # ReliefWeb's text (terms: no redistribution or compilation) and the fields of the lanes Relief does not publish:
-# IPC food-security phases (held for Tom's decision on IPC's terms) and IOM DTM displacement (no redistribution).
+# IPC food-security phases (IPC's terms conflict with HDX's listing) and IOM DTM displacement (no redistribution).
 RELIEFWEB_TEXT_FIELDS = ("description", "description-html", "body", "body-html", "profile", "headline")
 HELD_FIELDS = ("ipc_phase", "ipc_type", "population_in_phase", "population_fraction_in_phase", "reporting_round",
                "assessment_type")
@@ -339,24 +343,29 @@ def check_all(root: Path = ROOT) -> list[str]:
                 errs.append(f"{p.get('id', '?')}: {std}: {msg}")
         if p.get("kind") != "observation" or p.get("tier") not in ("routine", "anomaly"):
             errs.append(f"{p.get('id')}: this slice publishes observations only, tier routine or anomaly")
-        # The tier must be what the thresholds say (feed.rule), recomputed from the item's own fields.
+        # The tier must be what the thresholds say (feed.rule), and the event ladder member what feed.corroboration
+        # gives, both recomputed from the item's own fields.
         cc0 = (p.get("countries") or [""])[0]
+        generated = doc.get("generated_at") or ""
         if p.get("appeal") is not None:
-            hit = feed.rule("ifrc", {"place_context": p.get("place_context"), "country": cc0,
-                                     "start_date": p["appeal"].get("start_date")}, doc.get("generated_at") or "")
+            lane, rec = "ifrc", {"place_context": p.get("place_context"), "country": cc0,
+                                 "start_date": p["appeal"].get("start_date")}
         elif p.get("plan") is not None:
-            hit = feed.rule("hapi", {"needs": p.get("needs"), "country": cc0, "year": p["plan"].get("year")},
-                            doc.get("generated_at") or "")
+            lane, rec = "hapi", {"needs": p.get("needs"), "country": cc0, "year": p["plan"].get("year")}
         elif p.get("reports") is not None:
             d = p.get("disaster") or {}
-            hit = feed.rule("reliefweb", {"reports": p["reports"], "record": "disaster" if d else "country",
-                                          "disaster_id": d.get("disaster_id"), "country": cc0},
-                            doc.get("generated_at") or "")
+            lane, rec = "reliefweb", {"reports": p["reports"], "record": "disaster" if d else "country",
+                                      "disaster_id": d.get("disaster_id"), "country": cc0}
         else:
-            hit = feed.rule("who", {"prior_notices_730_days": (p.get("notice") or {}).get("prior_notices_730_days")},
-                            doc.get("generated_at") or "")
+            lane, rec = "who", {"prior_notices_730_days": (p.get("notice") or {}).get("prior_notices_730_days"),
+                                "published_day": ((p.get("sources") or [{}])[0].get("published_at") or "")[:10]}
+        hit = feed.rule(lane, rec, generated)
         if (p.get("tier") == "anomaly") != bool(hit):
             errs.append(f"{p.get('id')}: tier {p.get('tier')} does not match the RL-IND-1 to RL-IND-4 thresholds")
+        if p.get("corroboration") != feed.corroboration(lane, rec, generated):
+            errs.append(f"{p.get('id')}: " + ("an IFRC appeal or WHO notice is verified on its issuer's own report "
+                                              "(event ladder, basis official)" if lane in feed.LADDER_LANES else
+                                              "a measurement is outside the event ladder: no corroboration member"))
     published = [data / "feed.geojson", data / "snapshot.json"]
     if (data / "ended.geojson").exists():
         published.append(data / "ended.geojson")

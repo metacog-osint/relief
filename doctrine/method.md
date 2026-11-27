@@ -12,7 +12,9 @@ Four publishers' own records, read each run from their public APIs (the last two
   from (the Ukraine and impacted countries appeal, MGR65002, is recorded under Hungary, home of IFRC's Europe
   Regional Office), so that country is shown as "recorded under" and never as the place the appeal serves. The
   item is placed in the countries GO's emergency record lists (read each run from GO's emergency record, one
-  read per regional appeal), with the office GO names.
+  read per regional appeal), with the office GO names. When one of those reads fails, the other appeals are still
+  published from this run: that appeal keeps the countries last read for its emergency, or, with none read
+  before, is published with no country and says the emergency record could not be read.
 - **WHO outbreak notices** (Disease Outbreak News). Every notice WHO published in the last 365 days: the disease
   and place read from WHO's title, the countries and WHO regions named, the date and a link.
 
@@ -87,7 +89,7 @@ for that place against its own past, still a measurement.
   the request only and never recorded; ReliefWeb echoes it in its replies, so the raw copies (never cached or
   published) hold it and the test fixtures drop those fields.
 - Not read: IPC food-security phases (HDX lists them as public domain, while IPC's own terms give CC BY-NC-SA 3.0
-  IGO and forbid any military use: held for Tom's decision), IOM DTM displacement (no redistribution) and ACLED
+  IGO and forbid any military use: not read while the terms conflict), IOM DTM displacement (no redistribution) and ACLED
   conflict events (ACLED's own terms). The check fails the build on any IPC or DTM field.
 
 ## Gaps and no-data
@@ -97,19 +99,34 @@ failing. It never reads as "nothing new".
 ## Human review
 None in this slice. The title parser's misses are counted every run (`coverage_fraction` 0 on the item).
 
+## Event ladder
+Each IFRC appeal or DREF allocation (`RL-IFRC-*`) and each WHO notice (`RL-WHO-*`) carries the kit's event ladder
+member `corroboration` ([event ladder](https://github.com/metacog-osint/tic-doctrine/blob/main/docs/event-ladder.md),
+kit 0.6.13): state `verified`, basis `official`, one origin, with the issuer's source id (`ifrc-go-appeals` or
+`who-don`). The IFRC speaks within its own remit about an appeal or allocation it launched, and WHO about a notice it
+publishes. `first_reported_at` and `verified_at` are the issuer's own date, to the day: the appeal's start date or the
+notice's publication date (midnight UTC, never after the feed's time). Verified means the issuer reported it; it says
+nothing about the size of the need or the outbreak.
+
+Outside the ladder, with no member: HAPI plans and needs (`RL-HAPI-*`) and ReliefWeb's counts (`RL-RWC-*`), which are
+measurements, and ReliefWeb's disaster records (`RL-RW-*`), which index other publishers' reports (an aggregator is
+not an origin) and whose origins Relief does not read. `check` recomputes the member from each item's own fields.
+
 ## Next lanes (planned)
-IPC phases (waits on Tom's decision on IPC's terms, then an API token); needs by first-level region from HAPI for a
+IPC phases (not read while IPC's terms conflict with HDX's listing; also needs an API token); needs by first-level region from HAPI for a
 map; UNHCR refugee figures and the INFORM risk index (both open licences, in HAPI). IOM DTM is link-only (its terms
 forbid redistribution).
 
 ## Change log
 - relief-0.1 (16 Nov 2026): first slice, IFRC appeals and WHO Disease Outbreak News.
+- Kit 0.6.13 (27 Nov 2026, method unchanged): IFRC and WHO items carry the event ladder's `corroboration` member
+  (verified, basis official); see Event ladder above.
 - relief-0.2 (16 Nov 2026): thresholds for RL-IND-1 (p < 0.01, at least 2 appeals) and RL-IND-2 (first WHO
-  notice for a country in two years) set by Tom; items that meet one are tier anomaly with a `baseline_ref`.
+  notice for a country in two years); items that meet one are tier anomaly with a `baseline_ref`.
 - relief-0.4 (26 Nov 2026): regional and global IFRC appeals (code with no country in it) are flagged
   (`appeal.regional`), placed in their GO emergency's countries instead of the country GO records them under
   (kept as `appeal.recorded_country`, with `appeal.office`), and left out of every country's appeal baseline.
   The history index marks their new lines `regional`; earlier lines are unchanged.
 - relief-0.3 (18 Nov 2026): HDX HAPI lane (OCHA FTS plans and funding, OCHA HPC people in need) and ReliefWeb lane
   (current disasters, report counts); RL-IND-3 (people in need at least 25% above last year's plan) and RL-IND-4
-  (at least 10 ReliefWeb reports in 7 days, p < 0.01 at the own 12-week mean) set by Tom.
+  (at least 10 ReliefWeb reports in 7 days, p < 0.01 at the own 12-week mean).

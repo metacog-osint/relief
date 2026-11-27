@@ -17,7 +17,9 @@ MGR65002, MDR42005, MDRTIGRAY). GO still gives one country for it, often where t
 the Ukraine and impacted countries appeal, is under Hungary, home of IFRC's Europe Regional Office), so that
 country is not the place the appeal serves. Such a record keeps GO's country as given and gains `regional` and
 `office` (GO's `sector`, the IFRC office named). It is left out of every country's own appeal count, and the
-published record names the emergency's countries as GO's emergency record lists them (`countries`).
+published record names the emergency's countries as GO's emergency record lists them (`countries`). A failed read
+of one emergency record leaves the rest of the lane alone: the record keeps the countries last read for that
+emergency, or gets none and `countries_unread`, and the emergency is listed in the lane's `emergencies_unread`.
 """
 from __future__ import annotations
 
@@ -156,18 +158,39 @@ def place_context(history: list[dict], today: date) -> dict[str, dict]:
     return out
 
 
-def add_countries(records: list[dict], read_event) -> int:
+def last_countries(previous: list[dict] | None) -> dict[str, list[str]]:
+    """Emergency id -> the countries the last snapshot's regional records read for it (unread ones left out)."""
+    out: dict[str, list[str]] = {}
+    for r in previous or []:
+        ev = r.get("emergency_id")
+        if ev and r.get("regional") and not r.get("countries_unread") and isinstance(r.get("countries"), list):
+            out.setdefault(ev, list(r["countries"]))
+    return out
+
+
+def add_countries(records: list[dict], read_event, previous: list[dict] | None = None) -> tuple[int, list[str]]:
     """Give each published regional record `countries`: the countries of its GO emergency (`read_event(id)` returns
-    the reply's bytes), [] when it has no emergency. One read per emergency. Returns the reads made."""
-    seen: dict[str, list[str]] = {}
+    the reply's bytes), [] when it has no emergency. One read per emergency. A read that raises, or a reply that
+    does not parse, fails only that emergency: its records keep the countries the previous snapshot's records had
+    for it, or get [] and `countries_unread` when there is none. Returns (reads made, emergency ids not read)."""
+    kept = last_countries(previous)
+    seen: dict[str, list[str] | None] = {}
+    failed: list[str] = []
     for r in records:
         if not r.get("regional"):
             continue
         ev = r.get("emergency_id")
         if ev and ev not in seen:
-            seen[ev] = parse_event(read_event(ev))
-        r["countries"] = list(seen.get(ev, [])) if ev else []
-    return len(seen)
+            try:
+                seen[ev] = parse_event(read_event(ev))
+            except Exception:  # noqa: BLE001 - a timeout, an HTTP error, or a reply that is not GO's record
+                failed.append(ev)
+                seen[ev] = kept.get(ev)
+        got = seen[ev] if ev else []
+        r["countries"] = list(got or [])
+        if got is None:
+            r["countries_unread"] = True
+    return len(seen) - len(failed), sorted(failed)
 
 
 def all_records(active: list[dict], history: list[dict]) -> list[dict]:

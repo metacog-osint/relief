@@ -25,9 +25,9 @@ from relief import archive, feed, hapi, ifrc, iso, places, reliefweb, who_don  #
 _spec = importlib.util.spec_from_file_location("relief_cli", ROOT / "tools" / "relief.py")
 cli = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(cli)
-from tic_doctrine import contract, registers  # noqa: E402
+from tic_doctrine import contract, ladder, registers  # noqa: E402
 
-FIX = ROOT / "tests" / "fixtures"
+FIX =ROOT / "tests" / "fixtures"
 NOW = "2026-11-16T02:00:00Z"
 KEYS = {"HDX_HAPI_APP_IDENTIFIER": "test-hapi-identifier", "RELIEFWEB_APPNAME": "test-relief-appname"}
 SEEN: list[str] = []
@@ -362,6 +362,52 @@ class Pipeline(unittest.TestCase):
         self.assertEqual(feed.item_id("ifrc:8439"), feed.item_id("ifrc:8439"))
         self.assertTrue(feed.item_id("who:2026-DON626").startswith("RL-WHO-"))
 
+    def test_event_ladder(self):
+        """IFRC appeals and WHO notices are verified on their issuer's own report (kit event ladder, basis
+        official); HAPI plans and ReliefWeb's disasters and counts are outside the ladder."""
+        self.run_once()
+        path = self.tmp / "site" / "data" / "feed.geojson"
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        regs = registers.ids(self.tmp / "doctrine")
+        issuer = {"IFRC": "ifrc-go-appeals", "WHO": "who-don"}
+        seen = set()
+        for f in doc["features"]:
+            p = f["properties"]
+            lane = p["id"].split("-")[1]
+            seen.add(lane)
+            self.assertEqual([m for _, sev, m in contract.check(f, regs) if sev == "error"], [], p["id"])
+            if lane in issuer:
+                c = p["corroboration"]
+                self.assertEqual(ladder.state_of(f), "verified", p["id"])
+                self.assertFalse(ladder.rests_on_claim(f))
+                self.assertEqual({k: c[k] for k in ("state", "basis", "origins", "official", "rule")},
+                                 {"state": "verified", "basis": "official", "origins": 1, "official": issuer[lane],
+                                  "rule": ladder.rule()})
+                self.assertEqual(c["official"], p["sources"][0]["id"])
+                self.assertIsNone(c["confirmed_at"])
+                self.assertIsNone(c["geolocation"])
+                day = p["appeal"]["start_date"] if lane == "IFRC" else p["sources"][0]["published_at"][:10]
+                self.assertEqual(c["first_reported_at"], min(f"{day}T00:00:00Z", p["published_at"]))
+                self.assertEqual(c["verified_at"], c["first_reported_at"])
+            else:
+                self.assertNotIn("corroboration", p, p["id"])
+                self.assertIsNone(ladder.state_of(f))
+        self.assertEqual(seen, {"IFRC", "WHO", "HAPI", "RW", "RWC"})
+        # A report dated after the feed was made is held at the feed's time, never after it.
+        late = feed.corroboration("ifrc", {"start_date": "2026-12-01"}, NOW)
+        self.assertEqual((late["first_reported_at"], late["verified_at"]), (NOW, NOW))
+        self.assertIsNone(feed.corroboration("hapi", {}, NOW))
+        self.assertIsNone(feed.corroboration("reliefweb", {}, NOW))
+        # check fails an IFRC or WHO item without the member, and a measurement with one.
+        ev = next(f for f in doc["features"] if f["properties"]["id"].startswith("RL-WHO-"))
+        ms = next(f for f in doc["features"] if f["properties"]["id"].startswith("RL-HAPI-"))
+        ms["properties"]["corroboration"] = ev["properties"].pop("corroboration")
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        errs = cli.check_all(self.tmp)
+        self.assertTrue(any(e.startswith(ev["properties"]["id"]) and "issuer's own report" in e for e in errs), errs)
+        self.assertTrue(any(e.startswith(ms["properties"]["id"]) and "outside the event ladder" in e for e in errs),
+                        errs)
+
 
 class Retention(unittest.TestCase):
     """The append-only archives under history/ keep what the live view drops."""
@@ -620,6 +666,94 @@ class Regional(unittest.TestCase):
         counts = json.loads((hist / "appeals-counts.json").read_text(encoding="utf-8"))
         self.assertIn("2022", counts["regional_by_recorded_country_start_year"]["HU"])
         self.assertNotIn("2022", counts["by_country_start_year"].get("HU", {}))
+
+
+def event_fails(ev_id: str, reply: bytes | None = None):
+    """A getter whose read of one GO emergency raises OSError (reply None) or answers with `reply`."""
+    def g(url: str, timeout: int) -> bytes:
+        if f"/api/v2/event/{ev_id}/" in url:
+            if reply is None:
+                raise OSError("timed out")
+            return reply
+        return getter(url, timeout)
+    return g
+
+
+class EmergencyReadFails(unittest.TestCase):
+    """One GO emergency read failing must not turn the whole IFRC lane into its last good copy."""
+    LATER = "2026-11-16T08:00:00Z"
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        for part in ("doctrine", "site_src"):
+            shutil.copytree(ROOT / part, self.tmp / part)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def ids(self, snap):
+        return sorted(r["appeal_id"] for r in snap["records"]["ifrc"])
+
+    def by_id(self, snap):
+        return {r["appeal_id"]: r for r in snap["records"]["ifrc"]}
+
+    def assert_lane_fresh(self, snap, now, want_ids):
+        st = snap["lanes"]["ifrc"]
+        self.assertEqual(st["status"], "ok")
+        self.assertFalse(st["from_previous"])
+        self.assertEqual(st["fetched_at"], now)
+        self.assertEqual(self.ids(snap), want_ids)
+        self.assertEqual(snap["extra"]["ifrc"]["emergencies_unread"], ["6479"])
+        self.assertEqual(snap["extra"]["ifrc"]["emergencies_read"], 2)
+
+    def first_run_ids(self):
+        other = Path(tempfile.mkdtemp())
+        try:
+            snap = cli.collect(other, getter=getter, now=NOW, keys=KEYS)
+            self.assertEqual(snap["extra"]["ifrc"]["emergencies_unread"], [])
+            return self.ids(snap)
+        finally:
+            shutil.rmtree(other, ignore_errors=True)
+
+    def test_failed_read_with_no_earlier_copy(self):
+        want = self.first_run_ids()
+        for reply in (None, b"{}", b"<html>Not found</html>"):   # times out; no countries key; not JSON
+            snap = cli.collect(self.tmp, getter=event_fails("6479", reply), now=NOW, keys=KEYS)
+            self.assert_lane_fresh(snap, NOW, want)
+            recs = self.by_id(snap)
+            self.assertEqual(recs["3732"]["countries"], [])
+            self.assertTrue(recs["3732"]["countries_unread"])
+            self.assertEqual(recs["3542"]["countries"], ["UA"])        # the other emergencies still read
+            self.assertEqual(recs["4434"]["countries"], ["CD", "UG"])
+            self.assertTrue(all("countries_unread" not in r for a, r in recs.items() if a != "3732"))
+            if reply is not None:
+                continue
+            cli.build_site(self.tmp)
+            doc = json.loads((self.tmp / "site" / "data" / "feed.geojson").read_text(encoding="utf-8"))
+            p = next(f["properties"] for f in doc["features"]
+                     if (f["properties"].get("appeal") or {}).get("appeal_id") == "3732")
+            self.assertEqual(p["countries"], [])
+            self.assertNotIn("GO lists no country", p["summary"])
+            self.assertIn("could not read GO's emergency record", p["summary"])
+            self.assertEqual(cli.check_all(self.tmp), [])
+        # each pass starts from the snapshot the one before wrote, which also had no countries for 6479
+        self.assertTrue(self.by_id(snap)["3732"]["countries_unread"])
+
+    def test_failed_read_keeps_the_last_countries_read(self):
+        want = self.ids(cli.collect(self.tmp, getter=getter, now=NOW, keys=KEYS))
+        for now in (self.LATER, "2026-11-16T14:00:00Z"):    # twice: a kept copy is kept again
+            snap = cli.collect(self.tmp, getter=event_fails("6479"), now=now, keys=KEYS)
+            self.assert_lane_fresh(snap, now, want)
+            r = self.by_id(snap)["3732"]
+            self.assertEqual(r["countries"], ["SD"])
+            self.assertNotIn("countries_unread", r)
+        cli.build_site(self.tmp)
+        doc = json.loads((self.tmp / "site" / "data" / "feed.geojson").read_text(encoding="utf-8"))
+        p = next(f["properties"] for f in doc["features"]
+                 if (f["properties"].get("appeal") or {}).get("appeal_id") == "3732")
+        self.assertEqual(p["countries"], ["SD"])
+        self.assertIn("GO lists the emergency's country as Sudan.", p["summary"])
+        self.assertEqual(cli.check_all(self.tmp), [])
 
 
 if __name__ == "__main__":

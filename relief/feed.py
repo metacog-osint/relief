@@ -2,16 +2,16 @@
 
 One item per IFRC appeal and per WHO outbreak notice: kind "observation", status_class "reported". Each is the
 publisher's own report (source grade A2). No probability is stated. Tier is "routine" unless an indicator's
-threshold is met (Tom, 16 Nov 2026), then "anomaly", a measurement against the place's own past, never a warning:
+threshold is met (16 Nov 2026), then "anomaly", a measurement against the place's own past, never a warning:
 
 - RL-IND-1: an appeal that started in the last 90 days, in a country with at least 2 appeals in those 90 days and
   a Poisson tail probability below 0.01 at that country's rate over the ten years before (`place_context`).
 - RL-IND-2: a WHO notice naming a country WHO had not named in the 730 days before (`prior_notices_730_days`).
 - RL-IND-3: a country's UN-coordinated plan whose intersectoral people in need is at least 25% above last year's
-  plan for that country (`needs`, from OCHA HPC via HDX HAPI). Tom, 18 Nov 2026.
+  plan for that country (`needs`, from OCHA HPC via HDX HAPI). Since 18 Nov 2026.
 - RL-IND-4: a ReliefWeb disaster, or a country as ReliefWeb's main country of a report, with at least 10 reports in
   the last 7 days and a Poisson tail probability below 0.01 at its own weekly mean over the 12 weeks before
-  (`reports`). Tom, 18 Nov 2026.
+  (`reports`). Since 18 Nov 2026.
 
 `rule()` is the one statement of all four; the build and `check` both call it.
 """
@@ -24,12 +24,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "doctrine" / "kit" / "python"))
-from tic_doctrine import CONTRACT, __version__ as KIT_VERSION, geo  # noqa: E402
+from tic_doctrine import CONTRACT, __version__ as KIT_VERSION, geo, ladder  # noqa: E402
 
 from . import places  # noqa: E402
 
 PROGRAM = "relief"
-NAME = "Relief"  # Tom, 15 Nov 2026
+NAME = "Relief"
 SITE = "https://relief.theintelligence.company"  # planned address; no DNS or Pages project yet
 METHOD = "relief-0.4"  # 0.2: RL-IND-1/2 (16 Nov 2026); 0.3: HAPI and ReliefWeb lanes, RL-IND-3/4 (18 Nov);
 #                        0.4: regional and global IFRC appeals placed by their emergency's countries (26 Nov)
@@ -77,12 +77,12 @@ REQUIREMENT = {"ifrc": ["RL-PIR-1", "RL-PIR-2", "RL-EEI-1"], "who": ["RL-PIR-3"]
                "hapi": ["RL-PIR-4", "RL-EEI-2"], "reliefweb": ["RL-PIR-5", "RL-EEI-3"]}
 
 
-# Thresholds, Tom 16 Nov 2026 ("Adopt both thresholds").
+# Thresholds set 16 Nov 2026.
 IND1_P = 0.01        # RL-IND-1: tail probability strictly below this
 IND1_MIN = 2         # RL-IND-1: at least this many appeals in the window
 RECENT_DAYS = 90     # the window place_context counts (ifrc.RECENT_DAYS)
-IND3_RISE = 0.25     # RL-IND-3: people in need at least 25% above last year's plan (Tom, 18 Nov 2026)
-IND4_MIN = 10        # RL-IND-4: at least this many reports in 7 days (Tom, 18 Nov 2026)
+IND3_RISE = 0.25     # RL-IND-3: people in need at least 25% above last year's plan (18 Nov 2026)
+IND4_MIN = 10        # RL-IND-4: at least this many reports in 7 days (18 Nov 2026)
 IND4_P = 0.01        # RL-IND-4: tail probability strictly below this
 
 
@@ -206,7 +206,8 @@ def ifrc_summary(r: dict, generated: str | None = None) -> str:
         bits = [f"IFRC launched {kind}" + (f" ({r['hazard']})" if r.get("hazard") else "")
                 + f" on {_day_text(r['start_date'])}.",
                 (f"GO lists the emergency's {'country' if len(ccs) == 1 else 'countries'} as {names}."
-                 if ccs else "GO lists no country for the emergency."),
+                 if ccs else "Relief could not read GO's emergency record for its countries in this run."
+                 if r.get("countries_unread") else "GO lists no country for the emergency."),
                 f"IFRC's code {r['code']} marks a regional or global appeal; GO records it under "
                 f"{_name(r['country'])}{office}, which is not counted as that country's appeal."]
     else:
@@ -365,6 +366,28 @@ def event_times(r: dict) -> dict:
     return out
 
 
+# The event ladder (kit 0.6.13, docs/event-ladder.md). An IFRC appeal or DREF allocation is the IFRC's own record of
+# what it launched, and a Disease Outbreak News notice is a notice WHO publishes: each is an official source within its
+# own remit, so the item is verified on basis official from the day the issuer dates it. ReliefWeb's disaster records
+# index other publishers' reports (an aggregator is not an origin) and its counts and HAPI's plan figures are
+# measurements, so those items are outside the ladder and carry no corroboration member.
+LADDER_LANES = ("ifrc", "who")
+
+
+def corroboration(lane: str, r: dict, generated: str) -> dict | None:
+    """The item's `corroboration` member: verified on the issuer's own report for IFRC and WHO, else None.
+
+    first_reported_at and verified_at are the issuer's own date for the report, to the day (midnight UTC): the
+    appeal's start date, or the notice's publication date. Never after the feed's generation time."""
+    if lane not in LADDER_LANES:
+        return None
+    at = _midnight(r.get("start_date") if lane == "ifrc" else r.get("published_day")) or generated
+    at = min(at, generated)
+    return {"state": "verified", "basis": "official", "origins": 1, "official": SOURCES[lane]["id"],
+            "geolocation": None, "first_reported_at": at, "confirmed_at": None, "verified_at": at,
+            "rule": ladder.rule()}
+
+
 def signal(lane: str, r: dict, hit: dict) -> dict:
     """The one number an anomaly's tier rests on. Poisson tails stay in the item's own fields: `exceedance` is a
     share of the subject's baseline readings, which these counts do not have."""
@@ -488,6 +511,9 @@ def feature(r: dict, generated: str) -> dict:
     if props["data_as_of"] > generated:   # a source clock ahead of ours; contract 2.1: never after publication
         props["data_as_of"] = generated
         props.pop("data_as_of_precision", None)
+    corr = corroboration(lane, r, generated)
+    if corr:
+        props["corroboration"] = corr
     return {"type": "Feature", "geometry": geom, "properties": props}
 
 

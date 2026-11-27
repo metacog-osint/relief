@@ -20,7 +20,7 @@ name: update
 # snapshot and site/ are otherwise kept only for a while (the Actions cache) or replaced by the next deploy, and the
 # archive keeps every version. When the cache has no snapshot, the newest one in the archive is used.
 #
-# PROJECT below is the Pages project name; change it when Tom names the program.
+# PROJECT below is the Pages project name.
 on:
   push:
     branches: [main]
