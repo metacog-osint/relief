@@ -2,16 +2,16 @@
 
 One item per IFRC appeal and per WHO outbreak notice: kind "observation", status_class "reported". Each is the
 publisher's own report (source grade A2). No probability is stated. Tier is "routine" unless an indicator's
-threshold is met (Tom, 16 Nov 2026), then "anomaly", a measurement against the place's own past, never a warning:
+threshold is met (16 Nov 2026), then "anomaly", a measurement against the place's own past, never a warning:
 
 - RL-IND-1: an appeal that started in the last 90 days, in a country with at least 2 appeals in those 90 days and
   a Poisson tail probability below 0.01 at that country's rate over the ten years before (`place_context`).
 - RL-IND-2: a WHO notice naming a country WHO had not named in the 730 days before (`prior_notices_730_days`).
 - RL-IND-3: a country's UN-coordinated plan whose intersectoral people in need is at least 25% above last year's
-  plan for that country (`needs`, from OCHA HPC via HDX HAPI). Tom, 18 Nov 2026.
+  plan for that country (`needs`, from OCHA HPC via HDX HAPI). Since 18 Nov 2026.
 - RL-IND-4: a ReliefWeb disaster, or a country as ReliefWeb's main country of a report, with at least 10 reports in
   the last 7 days and a Poisson tail probability below 0.01 at its own weekly mean over the 12 weeks before
-  (`reports`). Tom, 18 Nov 2026.
+  (`reports`). Since 18 Nov 2026.
 
 `rule()` is the one statement of all four; the build and `check` both call it.
 """
@@ -29,7 +29,7 @@ from tic_doctrine import CONTRACT, __version__ as KIT_VERSION, geo, ladder  # no
 from . import places  # noqa: E402
 
 PROGRAM = "relief"
-NAME = "Relief"  # Tom, 15 Nov 2026
+NAME = "Relief"
 SITE = "https://relief.theintelligence.company"  # planned address; no DNS or Pages project yet
 METHOD = "relief-0.4"  # 0.2: RL-IND-1/2 (16 Nov 2026); 0.3: HAPI and ReliefWeb lanes, RL-IND-3/4 (18 Nov);
 #                        0.4: regional and global IFRC appeals placed by their emergency's countries (26 Nov)
@@ -77,12 +77,12 @@ REQUIREMENT = {"ifrc": ["RL-PIR-1", "RL-PIR-2", "RL-EEI-1"], "who": ["RL-PIR-3"]
                "hapi": ["RL-PIR-4", "RL-EEI-2"], "reliefweb": ["RL-PIR-5", "RL-EEI-3"]}
 
 
-# Thresholds, Tom 16 Nov 2026 ("Adopt both thresholds").
+# Thresholds set 16 Nov 2026.
 IND1_P = 0.01        # RL-IND-1: tail probability strictly below this
 IND1_MIN = 2         # RL-IND-1: at least this many appeals in the window
 RECENT_DAYS = 90     # the window place_context counts (ifrc.RECENT_DAYS)
-IND3_RISE = 0.25     # RL-IND-3: people in need at least 25% above last year's plan (Tom, 18 Nov 2026)
-IND4_MIN = 10        # RL-IND-4: at least this many reports in 7 days (Tom, 18 Nov 2026)
+IND3_RISE = 0.25     # RL-IND-3: people in need at least 25% above last year's plan (18 Nov 2026)
+IND4_MIN = 10        # RL-IND-4: at least this many reports in 7 days (18 Nov 2026)
 IND4_P = 0.01        # RL-IND-4: tail probability strictly below this
 
 

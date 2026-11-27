@@ -60,7 +60,7 @@
       "id": "ipc-api",
       "name": "IPC food insecurity phases: the IPC API (token by request) and HAPI's food-security endpoint (HDX dataset global-acute-food-insecurity-country-data)",
       "url": "https://www.ipcinfo.org/",
-      "licence": "Conflict, read 18 Nov 2026: HDX lists the dataset as public domain (CC0), while IPC's own API terms of use (v2.0, March 2023) give CC BY-NC-SA 3.0 IGO and forbid any use for military purposes. Held: no IPC figure is read or published until Tom decides on IPC's terms",
+      "licence": "Conflict, read 18 Nov 2026: HDX lists the dataset as public domain (CC0), while IPC's own API terms of use (v2.0, March 2023) give CC BY-NC-SA 3.0 IGO and forbid any use for military purposes. Held: no IPC figure is read or published while IPC's terms conflict with HDX's listing",
       "use": "excluded"
     },
     {

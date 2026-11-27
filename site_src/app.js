@@ -73,7 +73,7 @@
       if (!pc || !pc.appeals_last_90_days) { return; }
       by[a.country] = pc;
     });
-    // Relief's threshold (RL-IND-1, Tom 16 Nov 2026), as in relief/feed.py: under 1% with at least 2 appeals.
+    // Relief's threshold (RL-IND-1, 16 Nov 2026), as in relief/feed.py: under 1% with at least 2 appeals.
     function hit(pc) { return pc.appeals_last_90_days >= 2 && pc.tail_probability < 0.01; }
     var rows = Object.keys(by).map(function (c) { return [c, by[c]]; })
       .sort(function (x, y) { return x[1].tail_probability - y[1].tail_probability || y[1].appeals_last_90_days - x[1].appeals_last_90_days; });
@@ -118,7 +118,7 @@
     document.getElementById("plans").innerHTML = plans.length ? head + "<tbody>" + plans.map(function (p) {
       var n = p.needs, pp = p.prior_year_plan;
       var ch = n && n.people_in_need_change !== null && n.people_in_need_change !== undefined ? n.people_in_need_change : null;
-      // RL-IND-3 (Tom, 18 Nov 2026), as in relief/feed.py: at least 25% more people in need than last year's plan.
+      // RL-IND-3 (18 Nov 2026), as in relief/feed.py: at least 25% more people in need than last year's plan.
       var hit = n && n.people_in_need !== null && n.people_in_need_prior_year && n.people_in_need >= n.people_in_need_prior_year * 1.25;
       return '<tr id="' + esc(p.id) + '"><td>' + esc(cname(p.country)) + "</td><td>" + esc(p.appeal_name || p.appeal_code) +
         ' <span class="muted small">' + esc(p.appeal_type) + "</span></td><td>" + esc(usd(p.requirements_usd)) + "</td><td>" + esc(pct(p.funded_share)) +
@@ -141,7 +141,7 @@
       var names = (ccs || []).map(cname);
       return names.length <= cap ? names.join(", ") : names.slice(0, cap).join(", ") + " and " + (names.length - cap) + " more";
     }
-    // RL-IND-4 (Tom, 18 Nov 2026), as in relief/feed.py: at least 10 reports in 7 days and under 1% at the own mean.
+    // RL-IND-4 (18 Nov 2026), as in relief/feed.py: at least 10 reports in 7 days and under 1% at the own mean.
     function hit(r) { return r && r.reports_last_7_days >= 10 && r.tail_probability < 0.01; }
     function cnt(r) {
       return (hit(r) ? '<span class="badge badge-warn">unusual, ' : "<span>") + esc(r.reports_last_7_days) + "</span>" +

@@ -289,7 +289,7 @@ URL_IN_TEXT = re.compile(r"https?://[^\s\"'<>)\]]+")
 # WHO's notice body fields must never reach the site (WHO's terms: no substantial reproduction).
 WHO_BODY_FIELDS = ("Overview", "Epidemiology", "Assessment", "Advice", "Response", "FurtherInformation", "Summary")
 # ReliefWeb's text (terms: no redistribution or compilation) and the fields of the lanes Relief does not publish:
-# IPC food-security phases (held for Tom's decision on IPC's terms) and IOM DTM displacement (no redistribution).
+# IPC food-security phases (IPC's terms conflict with HDX's listing) and IOM DTM displacement (no redistribution).
 RELIEFWEB_TEXT_FIELDS = ("description", "description-html", "body", "body-html", "profile", "headline")
 HELD_FIELDS = ("ipc_phase", "ipc_type", "population_in_phase", "population_fraction_in_phase", "reporting_round",
                "assessment_type")

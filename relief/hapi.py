@@ -10,7 +10,7 @@ X-HDX-HAPI-APP-IDENTIFIER header, never in a URL, and is never recorded. HAPI as
 
 Each dataset's licence is read from HDX (package_show) every run, and a row is published only when its dataset's
 licence is in OPEN_LICENCES. If HDX's catalogue cannot be read, the licence recorded on 18 Nov 2026 is used and the
-lane says so. Not read at all: food security (IPC; held for Tom's decision on IPC's terms), IDPs (IOM DTM: no
+lane says so. Not read at all: food security (IPC; its terms conflict with HDX's listing), IDPs (IOM DTM: no
 redistribution) and conflict events (ACLED's own terms).
 
 Published: one record per plan per country for the current year (FTS's "Not specified" rows, money outside any
