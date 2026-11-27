@@ -6,7 +6,7 @@
       "id": "ifrc-go-appeals",
       "name": "IFRC GO appeals API (goadmin.ifrc.org/api/v2/appeal/): active appeals, and every appeal since ten years ago for each country's own record",
       "url": "https://goadmin.ifrc.org/api/v2/appeal/",
-      "licence": "IFRC GO terms and conditions (read 16 Nov 2026 from the GO web app's source, IFRCGo/go-web-app): data visible to everyone; non-commercial use such as research; maps, charts and analyses allowed; no copying or redistribution of the data bank or a substantial part of it. Published: active and recent appeals as facts with a link; the ten-year read is used for counts only",
+      "licence": "IFRC GO terms and conditions (read 16 Nov 2026 from the GO web app's source, IFRCGo/go-web-app): data visible to everyone; non-commercial use such as research; maps, charts and analyses allowed; no copying or redistribution of the data bank or a substantial part of it. Published: active and recent appeals as facts with a link; the ten-year read is used for counts and links only",
       "use": "ingest",
       "grade": "A2",
       "independence_group": "ifrc"
