@@ -12,7 +12,9 @@ Four publishers' own records, read each run from their public APIs (the last two
   from (the Ukraine and impacted countries appeal, MGR65002, is recorded under Hungary, home of IFRC's Europe
   Regional Office), so that country is shown as "recorded under" and never as the place the appeal serves. The
   item is placed in the countries GO's emergency record lists (read each run from GO's emergency record, one
-  read per regional appeal), with the office GO names.
+  read per regional appeal), with the office GO names. When one of those reads fails, the other appeals are still
+  published from this run: that appeal keeps the countries last read for its emergency, or, with none read
+  before, is published with no country and says the emergency record could not be read.
 - **WHO outbreak notices** (Disease Outbreak News). Every notice WHO published in the last 365 days: the disease
   and place read from WHO's title, the countries and WHO regions named, the date and a link.
 

@@ -666,5 +666,93 @@ class Regional(unittest.TestCase):
         self.assertNotIn("2022", counts["by_country_start_year"].get("HU", {}))
 
 
+def event_fails(ev_id: str, reply: bytes | None = None):
+    """A getter whose read of one GO emergency raises OSError (reply None) or answers with `reply`."""
+    def g(url: str, timeout: int) -> bytes:
+        if f"/api/v2/event/{ev_id}/" in url:
+            if reply is None:
+                raise OSError("timed out")
+            return reply
+        return getter(url, timeout)
+    return g
+
+
+class EmergencyReadFails(unittest.TestCase):
+    """One GO emergency read failing must not turn the whole IFRC lane into its last good copy."""
+    LATER = "2026-11-16T08:00:00Z"
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        for part in ("doctrine", "site_src"):
+            shutil.copytree(ROOT / part, self.tmp / part)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def ids(self, snap):
+        return sorted(r["appeal_id"] for r in snap["records"]["ifrc"])
+
+    def by_id(self, snap):
+        return {r["appeal_id"]: r for r in snap["records"]["ifrc"]}
+
+    def assert_lane_fresh(self, snap, now, want_ids):
+        st = snap["lanes"]["ifrc"]
+        self.assertEqual(st["status"], "ok")
+        self.assertFalse(st["from_previous"])
+        self.assertEqual(st["fetched_at"], now)
+        self.assertEqual(self.ids(snap), want_ids)
+        self.assertEqual(snap["extra"]["ifrc"]["emergencies_unread"], ["6479"])
+        self.assertEqual(snap["extra"]["ifrc"]["emergencies_read"], 2)
+
+    def first_run_ids(self):
+        other = Path(tempfile.mkdtemp())
+        try:
+            snap = cli.collect(other, getter=getter, now=NOW, keys=KEYS)
+            self.assertEqual(snap["extra"]["ifrc"]["emergencies_unread"], [])
+            return self.ids(snap)
+        finally:
+            shutil.rmtree(other, ignore_errors=True)
+
+    def test_failed_read_with_no_earlier_copy(self):
+        want = self.first_run_ids()
+        for reply in (None, b"{}", b"<html>Not found</html>"):   # times out; no countries key; not JSON
+            snap = cli.collect(self.tmp, getter=event_fails("6479", reply), now=NOW, keys=KEYS)
+            self.assert_lane_fresh(snap, NOW, want)
+            recs = self.by_id(snap)
+            self.assertEqual(recs["3732"]["countries"], [])
+            self.assertTrue(recs["3732"]["countries_unread"])
+            self.assertEqual(recs["3542"]["countries"], ["UA"])        # the other emergencies still read
+            self.assertEqual(recs["4434"]["countries"], ["CD", "UG"])
+            self.assertTrue(all("countries_unread" not in r for a, r in recs.items() if a != "3732"))
+            if reply is not None:
+                continue
+            cli.build_site(self.tmp)
+            doc = json.loads((self.tmp / "site" / "data" / "feed.geojson").read_text(encoding="utf-8"))
+            p = next(f["properties"] for f in doc["features"]
+                     if (f["properties"].get("appeal") or {}).get("appeal_id") == "3732")
+            self.assertEqual(p["countries"], [])
+            self.assertNotIn("GO lists no country", p["summary"])
+            self.assertIn("could not read GO's emergency record", p["summary"])
+            self.assertEqual(cli.check_all(self.tmp), [])
+        # each pass starts from the snapshot the one before wrote, which also had no countries for 6479
+        self.assertTrue(self.by_id(snap)["3732"]["countries_unread"])
+
+    def test_failed_read_keeps_the_last_countries_read(self):
+        want = self.ids(cli.collect(self.tmp, getter=getter, now=NOW, keys=KEYS))
+        for now in (self.LATER, "2026-11-16T14:00:00Z"):    # twice: a kept copy is kept again
+            snap = cli.collect(self.tmp, getter=event_fails("6479"), now=now, keys=KEYS)
+            self.assert_lane_fresh(snap, now, want)
+            r = self.by_id(snap)["3732"]
+            self.assertEqual(r["countries"], ["SD"])
+            self.assertNotIn("countries_unread", r)
+        cli.build_site(self.tmp)
+        doc = json.loads((self.tmp / "site" / "data" / "feed.geojson").read_text(encoding="utf-8"))
+        p = next(f["properties"] for f in doc["features"]
+                 if (f["properties"].get("appeal") or {}).get("appeal_id") == "3732")
+        self.assertEqual(p["countries"], ["SD"])
+        self.assertIn("GO lists the emergency's country as Sudan.", p["summary"])
+        self.assertEqual(cli.check_all(self.tmp), [])
+
+
 if __name__ == "__main__":
     unittest.main()
