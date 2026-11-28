@@ -7,8 +7,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 # LICENSE and NOTICE carry the copyright holder; doctrine/kit/ and tools/tic_archive.py are shared copies kept
-# identical to their source repositories.
-SKIP = ("doctrine/kit/", "tools/tic_archive.py", "LICENSE", "NOTICE")
+# identical to their source repositories; history/ holds source records (WHO and OCHA text) that the update run
+# commits, so a place or person named in a source never stops a run.
+SKIP = ("doctrine/kit/", "tools/tic_archive.py", "LICENSE", "NOTICE", "history/")
+WORD = re.compile(r"[^\W\d_]+")  # whole words: an accented letter stays inside its word
 # Lower-case words, by SHA-256, so this file does not hold them.
 WORDS = frozenset({
     "e1608f75c5d7813f3d4031cb30bfb786507d98137538ff8e128a6ff74e84e643",
@@ -22,7 +24,7 @@ def hits(text):
         if line.startswith("Copyright "):
             continue
         spaced = re.sub(r"([a-z])([A-Z])", r"\1 \2", line)
-        if any(hashlib.sha256(w.lower().encode()).hexdigest() in WORDS for w in re.findall(r"[A-Za-z]+", spaced)):
+        if any(hashlib.sha256(w.lower().encode()).hexdigest() in WORDS for w in WORD.findall(spaced)):
             found.append(number)
     return found
 
@@ -32,6 +34,14 @@ class NoNames(unittest.TestCase):
         word = "".join(("T", "om"))
         self.assertEqual(hits("a\nset by " + word + "'s rule\nby" + word + " x\nCopyright 2026 " + word), [2, 3])
         self.assertEqual(hits("atom bottom custom"), [])
+
+    def test_accented_words_are_not_split(self):
+        place = "S" + chr(0xE3) + "o " + "".join(("T", "om")) + chr(0xE9) + " and Pr" + chr(0xED) + "ncipe"
+        self.assertEqual(hits("Mpox - " + place), [])
+
+    def test_history_records_are_not_scanned(self):
+        self.assertTrue("history/who-notices.jsonl".startswith(SKIP))
+        self.assertTrue("history/funding.jsonl".startswith(SKIP))
 
     def test_tracked_files_hold_no_personal_name(self):
         listed = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True).stdout
